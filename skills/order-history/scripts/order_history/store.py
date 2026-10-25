@@ -168,9 +168,10 @@ def copy_tree(src, dest):
         os.makedirs(out, exist_ok=True)
         for name in files:
             path = os.path.join(root, name)
-            with _open_regular(path) as fin, open(
-                os.path.join(out, name), "xb"
-            ) as fout:
+            with (
+                _open_regular(path) as fin,
+                open(os.path.join(out, name), "xb") as fout,
+            ):
                 shutil.copyfileobj(fin, fout)
 
 
@@ -510,9 +511,10 @@ def import_export(data_dir, path, registry, dry_run=False, force=False, **hooks)
 
     if dry_run:
         # Staged outside the data folder, which stays untouched.
-        with _shared_lock(data_dir), tempfile.TemporaryDirectory(
-            prefix="order-history-"
-        ) as tmp:
+        with (
+            _shared_lock(data_dir),
+            tempfile.TemporaryDirectory(prefix="order-history-") as tmp,
+        ):
             staging = os.path.join(tmp, "export")
             os.mkdir(staging, 0o700)
             sides = _stage(vendor, src, staging, current)

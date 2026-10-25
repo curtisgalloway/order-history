@@ -7,7 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 
 Revision: 2026-10-25, approved (page shell published as a release asset, not committed).
 Corrected in M4: release assets are protected by immutable releases, not the tag
-ruleset (M3 review F1, user decision 2026-10-25).
+ruleset (M3 review F1, user decision 2026-10-25). Corrected in M5: the exit-code table
+lists 4 and each command's 20/21, as built in M2–M4.
 
 **Terms** (more in [GLOSSARY.md](../GLOSSARY.md)):
 
@@ -303,9 +304,13 @@ The codes follow the house CLI conventions:
 | 0 | ok |
 | 1 | search found nothing |
 | 2 | bad usage, or an unrecognized or ambiguous file |
-| 3 | no data folder, or no export for a vendor |
-| 20/21 | a site throttled before or during an update (M4 also: robots.txt disallows or can't be read, lookups failed, or another update is running) |
+| 3 | no data folder, or no export for a vendor (M4: `update` with Adafruit orders to look up and no lookup email) |
+| 4 | no page shell (offline, no cache, no Node), or `index.html` couldn't be written; the old page stays and an import is undone (M3) |
+| 20 | nothing was done; retry. `import`/`build`: another import is running, or a failure was rolled back (M2). `update`: a site throttled before anything was saved, robots.txt disallows or can't be read, every lookup failed, or another update or an import is running (M4) |
+| 21 | partly done. `import`: a failure couldn't be rolled back; check the folders named (M2). `update`: some lookups saved before a stop or failures, or the rebuild met a running import (M4). Read with the command |
 | 30 | an older export without `--force`, or a zip-member path refused |
+
+The skill gives the same codes per command (M5).
 
 ## Key decisions
 

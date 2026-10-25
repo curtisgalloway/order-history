@@ -626,8 +626,9 @@ class RollbackTest(ImportCase):
                 raise OSError(28, "injected: no space left")
             return real_open(path, *args, **kwargs)
 
-        with self._rename_failing(to_current), mock.patch(
-            "builtins.open", side_effect=fake_open
+        with (
+            self._rename_failing(to_current),
+            mock.patch("builtins.open", side_effect=fake_open),
         ):
             code, _, err = self.import_json(self.new_zip)
         self.assertEqual(code, 21)
@@ -743,10 +744,13 @@ class AdafruitImportTest(ImportCase):
         self.assertEqual(
             report["archived_to"], os.path.join("adafruit", "archive", "2024-01-31")
         )
-        with open(
-            os.path.join(self.data, "adafruit", "current", "order_history.csv"),
-            "rb",
-        ) as f, open(new, "rb") as g:
+        with (
+            open(
+                os.path.join(self.data, "adafruit", "current", "order_history.csv"),
+                "rb",
+            ) as f,
+            open(new, "rb") as g,
+        ):
             self.assertEqual(f.read(), g.read())
 
     def test_folder_is_not_an_adafruit_export(self):

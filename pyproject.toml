@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 Curtis Galloway
+# SPDX-License-Identifier: Apache-2.0
+
+# Lets `uv tool install` (or pip) put an `order-history` command on PATH. The
+# package itself lives in the skill folder, so the same code runs from the
+# script path, an installed tool, or the Claude Code plugin.
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "order-history"
+dynamic = ["version"]
+description = "Search and maintain your own order history from store exports"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/curtisgalloway/order-history"
+
+[project.scripts]
+order-history = "order_history.cli:main"
+
+[tool.uv]
+package = true
+
+[tool.setuptools]
+package-dir = { "" = "skills/order-history/scripts" }
+packages = ["order_history", "order_history.vendors"]
+
+# The skill's documents, which --skill prints. In the source tree they are
+# symbolic links to skills/order-history/SKILL.md and vendors/*.md; the
+# wheel stores their contents.
+[tool.setuptools.package-data]
+order_history = ["agent_skill.md"]
+"order_history.vendors" = ["*.md"]
+
+[tool.setuptools.dynamic]
+version = { attr = "order_history.__version__" }

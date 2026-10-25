@@ -25,3 +25,8 @@ __pycache__/
 
 # Opt-out marker for a local pre-write hook; machine-local, never tracked.
 /.no-pitch
+
+# Python packaging leftovers (uv tool install . / uv build).
+/build/
+/dist/
+*.egg-info/

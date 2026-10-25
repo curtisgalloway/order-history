@@ -1,0 +1,15 @@
+{
+  "name": "order-history",
+  "description": "The order-history plugin, served from its own repository.",
+  "owner": {
+    "name": "Curtis Galloway",
+    "url": "https://github.com/curtisgalloway"
+  },
+  "plugins": [
+    {
+      "name": "order-history",
+      "source": "./",
+      "description": "Import, search and maintain your own order history from store exports."
+    }
+  ]
+}
