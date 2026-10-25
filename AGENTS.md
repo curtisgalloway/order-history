@@ -35,7 +35,7 @@ unzipping the downloads here; they are not in git.
 ├── tests/                           ← unit tests, invented fixtures only
 ├── Adafruit/
 │   ├── order_history.csv            ← Adafruit account export (order-level only)
-│   ├── items.json                   ← item lines per order, from the item fetcher
+│   ├── items.json                   ← item lines per order, from `order-history update`
 │   └── lookup_email.txt             ← account email for the order-status lookup
 ├── Your Amazon Orders/
 │   ├── Order History.csv            ← ★ the main file: all physical orders
@@ -98,9 +98,9 @@ addresses.
   UTC (the page shows `12:00:00` as "12:00 PM").
 - `shipping_method` holds HTML (sometimes truncated) with `=` also mangled to
   spaces; the vendor module strips the tags.
-- Item lists are not in the CSV. A fetcher gets them (it was
-  `fetch_adafruit_items.py`, removed with the old page in M3 and returning as
-  `order-history update` in M4; see git history before M3) from Adafruit's guest "Order Status" form (on the account sign-in page),
+- Item lists are not in the CSV. `order-history update` gets them
+  (`enrich()` in `order_history/vendors/adafruit.py`) from Adafruit's guest
+  "Order Status" form (on the account sign-in page),
   which shows an order's items given the account email and full order
   number, with no login: a POST of `email` and `order_number` to
   `https://www.adafruit.com/index.php?main_page=account_history_info`. Each
@@ -108,13 +108,15 @@ addresses.
   holding the product link, `PID: <n>`, image, unit price, quantity and line
   total. Results are cached in `items.json`; the vendor module merges them,
   and orders not yet fetched show "item list not in export".
-- The fetcher is deliberately polite: it reads robots.txt with its own
+- The lookup is deliberately polite: it reads robots.txt with its own
   User-Agent (Adafruit answers Python's default one with 403, which Python's
   `RobotFileParser.read()` turns into "disallow everything") and stops if
   the page is disallowed or robots.txt can't be read; it sends one request
   at a time, at least 10 s apart plus jitter (longer if robots.txt sets a
   `Crawl-delay`), never refetches a cached order, and stops at the first
-  429/5xx. Keep it that way.
+  429/5xx. Keep it that way; `tests/test_update.py` checks each rule with
+  the network, clock and jitter stubbed. Tests and manual runs never send a
+  real request to either store.
 
 ### Replacing an export with a newer one
 
@@ -218,9 +220,9 @@ How it fits together:
   - Product page: `https://www.amazon.com/dp/<ASIN>`
   - Order details: `https://www.amazon.com/gp/your-account/order-details?orderID=<Order ID>`
   - Product image (no auth, three tiers of reliability):
-    1. `images.json` — local cache, built by an image fetcher (it was
-       `fetch_images.py`, removed in M3; returning as `order-history update
-       --amazon-images` in M4).
+    1. `images.json` — local cache, built by `order-history update
+       --amazon-images` (`enrich()` in `order_history/vendors/amazon.py`).
+       Without the flag no request goes to any Amazon host.
        `{"src": "i", "id": "<imageId>"}` means
        `https://m.media-amazon.com/images/I/<imageId>._SL160_.jpg` (stable CDN
        URL, any `_SL<px>_` size tag works); `{"src": "p"}` means tier 2 works;
@@ -231,8 +233,8 @@ How it fits together:
        image dimensions/size, not status code.
     3. Scrape `https://www.amazon.com/dp/<ASIN>` with a browser User-Agent and
        extract `"hiRes":"https://m.media-amazon.com/images/I/…"` or
-       `data-old-hires` — this is what the image fetcher automates (rate-limited,
-       captcha-aware, resumable).
+       `data-old-hires` — this is what `update --amazon-images` automates
+       (rate-limited, captcha-aware, resumable).
 - **`Photograph ID`** in `Delivery Photos.csv` is the filename (without
   `.jpeg`) under `Media/YourOrders.PhotoOnDelivery/media/`. The CSV has the
   delivery date and GPS coordinates; it does **not** carry an Order ID, so

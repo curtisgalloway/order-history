@@ -57,7 +57,7 @@ counts (AGENTS.md, "Before committing").
 | M1 | Package, data folder, vendors load; `init`/`status`/`search`/`order` | — | complete |
 | M2 | `import`: detect, stage, compare, archive, swap, rollback | M1 | complete |
 | M3 | Node-free page; `search/` removed; CI and release workflow | M2 | complete |
-| M4 | `update`: Adafruit items, opt-in Amazon images | M3 | pending |
+| M4 | `update`: Adafruit items, opt-in Amazon images | M3 | complete |
 | M5 | Skill, vendor docs, `--skill`, plugin manifest, packaging, docs | M4 | pending |
 | M6 | Migrate real data, final verification, first release | M5 | pending |
 
@@ -144,8 +144,8 @@ Open limitations:
   this milestone's pull request merges.
 - The browser check ran over a loopback HTTP server; the browser tool refuses `file://`.
   Opening `<data>/index.html` from disk once by hand is open.
-- A downloaded shell is checked only for its structure, not a checksum (review F1). The
-  user decides between pinning a SHA-256 in the package and turning on immutable releases.
+- A downloaded shell is checked only for its structure, not a checksum (review F1).
+  Resolved 2026-10-25 by user decision: immutable releases are on; no SHA pin.
 - Until M6 tags a release, a machine without Node can't build the page; `__version__` must
   equal the tag's version (`release.yml` checks).
 - No Adafruit item or Amazon image fetching until M4 (the scripts went with `search/`; port
@@ -153,60 +153,31 @@ Open limitations:
 
 ## M4 — Update
 
-**Design coverage:** R6
+**Outcome:** `order-history update [--email E] [--amazon-images] [--dry-run] [--json]`:
+Adafruit item lists from the guest order-status page (on by default) and, only with
+`--amazon-images`, Amazon product images, both ported from the M3-deleted fetchers with
+their politeness rules (plus stopping on more transient errors), then a rebuild when a
+cache changed. Exports are read under the import lock, lookups run under a separate update
+lock. Exit codes 0, 3 (no lookup email), 4, 20, 21. Network, clock and jitter are injected;
+no test or manual run reached either store. 156 unit tests.
 
-**Dependencies:** M3
-
-**In scope:**
-
-- `enrich()` for Adafruit (from `fetch_adafruit_items.py`, keeping its
-  politeness rules unchanged);
-- `enrich()` for Amazon (from `fetch_images.py`), only with `--amazon-images`;
-- `update`, with rebuilding, a progress log on stderr, `--json` and exit
-  codes 20/21.
-
-**Out of scope:** any download automation (phase 2).
-
-### Implementation steps
-
-1. Move the fetchers into the vendor modules. The network call becomes an
-   injectable function, so tests can stub it.
-2. `update` runs every vendor's enrichment and then rebuilds if anything
-   changed. It does nothing, quickly, when nothing is missing.
-3. Exit codes:
-   - 20: robots.txt disallows the page, or throttling happened before any
-     change.
-   - 21: throttling happened after some orders were fetched (the cache
-     stays partial).
-   - 3: the lookup email is missing.
-4. Read the lookup email from `<data>/adafruit/lookup_email.txt`, or
-   `$ADAFRUIT_EMAIL`, or `--email`.
-
-### Acceptance criteria
-
-- [ ] With a stubbed fetch, `update` fills items for unfetched orders only,
-  waits at least the configured delay between requests (the clock is
-  stubbed), and rebuilds.
-- [ ] A stubbed robots.txt that disallows the page exits 20 without fetching.
-- [ ] A stubbed 429 midway exits 21 and keeps the orders already fetched.
-- [ ] Without `--amazon-images`, no request goes to amazon.com (the stub
-  asserts no calls).
-- [ ] A second `update` with nothing missing makes no requests and exits 0.
-
-### Testing and review
-
-- **Tests:** each criterion above.
-- **Review focus:** the politeness rules carried over exactly; no request at
-  all without opt-in.
-
-### Session sizing
-
-Start from the two fetcher scripts and the M1 vendor modules. This is small;
-no split expected.
+**Design coverage:** R6. **Dependencies:** M3.
 
 ### Evidence and findings
 
-Status: pending. Evidence: [M4](evidence/M4.md). Notebook: [M4](notebook/M4.md).
+Status: complete. Evidence: [M4](evidence/M4.md) (full milestone definition, checks and
+review). Notebook: [M4](notebook/M4.md).
+
+Open limitations:
+
+- Never run against the real sites (by design, this milestone sends no real request). The
+  first real `update` is M6's, on the migrated data.
+- An Adafruit order whose lookup fails for good (a 404, or a page that isn't its status
+  page) is retried on every run and keeps `update` at exit 20/21. Not cached as a failure,
+  as before.
+- `update` exit 21 means "partly done; run again later", import's 21 "rollback failed;
+  check the folders": the same band, read with the command (review F5). M5's skill must say
+  so.
 
 ## M5 — Skill, plugin, packaging and docs
 
@@ -324,9 +295,9 @@ Status: pending. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
 ## Discovered work / backlog
 
 - Done in M3: `search_cases.json` runs against `web/src/search.ts` in the `page` job.
-- The design's "Key decisions" says the tag ruleset stops a version's shell from being
-  swapped; it doesn't cover release assets (M3 review F1). Correct the design when the user
-  picks pinning or immutable releases.
+- Done in M4: the design's "Key decisions" now credits immutable releases (turned on by the
+  user's decision, 2026-10-25), not the tag ruleset, with protecting release assets (M3
+  review F1). No SHA-256 pin.
 - The design's data-folder layout lists `data.json`; M3 doesn't write it (nothing reads it).
   Drop it from the design at the next revision.
 - UI development lost live data: `npm run dev` shows the "no order data" message. If it's
@@ -342,7 +313,15 @@ Status: pending. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
   now). If a cap is wanted, set it from a real export's size, since Amazon's run to
   gigabytes with photos and invoices.
 - Add exit codes 20/21 (import busy or rolled back / rollback failed) to the design's
-  exit-code table and the skill (M5).
+  exit-code table and the skill (M5). The skill must also give `update`'s meanings (20:
+  nothing saved, retry later; 21: some saved, run again later; 3: no lookup email) and say
+  that 21 is read with the command (M4 review F5).
+- `update` has no `--limit`, `--delay` or `--refresh` (the old scripts had them). Add
+  `--limit` if a first full Amazon image run (thousands of pages at about 2 s each) needs
+  to be spread out; never let `--delay` go below the 10 s Adafruit floor. Found in M4.
+- An Adafruit order whose lookup always fails is asked again on every `update`. If that
+  shows up in real use, cache the failure with a date and retry it only after a while.
+  Found in M4.
 - Exit 4 (no page shell, or the page couldn't be written) and `build` belong in the design's
   exit-code table and the skill (M5).
 - The CLI has no equivalent of the page's Orders-view search (terms spread across an
@@ -352,25 +331,20 @@ Status: pending. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
 
 ## Next session
 
-- **Current milestone:** M3 complete (checkpoint commit `plan: M3 — Node-free page and
-  retiring search/` on branch `m3-page`). M4 is next.
-- **Completed work:** M1 (PR #3) and M2 (PR #4) merged. M3 is committed locally on
-  `m3-page`; pushing, the pull request and merging are the orchestrator's (with the user's
-  go-ahead).
-- **Gated before M3 merges:** re-run `harden_repo.sh` with `lint page "test (3.10)"
-  "test (3.x)"` and confirm (exact commands in [M3 evidence](evidence/M3.md#branch-protection-plan-step-5-gated)),
-  after the pull request's `page` job is green.
+- **Current milestone:** M4 complete (checkpoint commit `plan: M4 — Update` on branch
+  `m4-update`). M5 is next.
+- **Completed work:** M1–M3 merged (PRs #3–#5). M4 is committed locally on `m4-update`;
+  pushing, the pull request and merging are the orchestrator's (with the user's go-ahead).
+  Required checks on `main` are `lint`, `page`, `test (3.10)` and `test (3.x)`.
 - **Uncommitted state:** none for the milestone. `.no-pitch` stays untracked.
-- **Decisions pending:** shell integrity (M3 review F1): pin a SHA-256 of
-  `page-shell.html` in the package, or turn on GitHub immutable releases (the release
-  workflow already publishes draft-first so either works). Not blocking M4.
+- **Decisions pending:** none. M3's shell-integrity question is resolved (immutable releases
+  on, 2026-10-25).
 - **Context boundary:** normal completion.
-- **Resume action:** after M3 merges, create `m4-update` from an up-to-date `origin/main`
-  and begin M4. The fetchers are in git history: `git show 15fb0ad:search/fetch_adafruit_items.py`
-  and `git show 15fb0ad:search/fetch_images.py`. `update` rebuilds through
-  `cli._build_page()` (take `store.import_lock()` as `build` does).
+- **Resume action:** after M4 merges, create `m5-skill` from an up-to-date `origin/main`
+  and begin M5. The skill's exit-code table needs import's and update's 20/21 (backlog).
 - **Read first:**
-  - [design](design.md), R6;
-  - this plan's M4 section;
+  - [design](design.md), R8 and R9;
+  - this plan's M5 section and the backlog's exit-code items;
   - [notebook index](notebook/index.md);
-  - the two fetchers (from history), `order_history/vendors/`, `order_history/page.py`.
+  - `AGENTS.md` (its export-format sections move into `vendors/<id>.md`), `README.md`,
+    `order_history/cli.py` (the commands and exit codes the skill documents).

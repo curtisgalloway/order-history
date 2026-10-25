@@ -12,6 +12,16 @@ couldn't be written; the old page is unchanged, and an import is undone; 20
 nothing changed: another import is running (also for build), or a failure was
 rolled back, retry; 21 an import's rollback failed, check the folders named;
 30 an older export without --force, or an unsafe zip member or folder entry.
+
+update: 0 done (possibly nothing to do); 3 also when Adafruit orders need
+items and there is no lookup email (this wins over 20 and 21: retrying can't
+fix it; --json has each store's result); 20 nothing was fetched: a site
+throttled or was unreachable, robots.txt disallows or couldn't be read, every
+lookup failed, or another update or an import is running; retry later; 21
+some lookups were saved (by any store) before a site stopped the run or
+other lookups failed (the caches are partial, the page is rebuilt), or the
+page couldn't be rebuilt because an import was running; run update or build
+again later; 4 the page couldn't be rebuilt.
 """
 
 import argparse
@@ -21,7 +31,16 @@ import os
 import re
 import sys
 
-from order_history import __version__, config, model, page, search, store, vendors
+from order_history import (
+    __version__,
+    config,
+    fetching,
+    model,
+    page,
+    search,
+    store,
+    vendors,
+)
 
 EXIT_OK = 0
 EXIT_EMPTY = 1
@@ -29,6 +48,8 @@ EXIT_USAGE = 2
 EXIT_NO_DATA = 3
 EXIT_NO_SHELL = page.EXIT_NO_SHELL
 EXIT_REFUSED = store.EXIT_REFUSED
+EXIT_RETRY_FREE = store.EXIT_RETRY_FREE
+EXIT_PARTIAL = store.EXIT_RECONCILE
 
 
 class CliError(Exception):
@@ -359,6 +380,119 @@ def cmd_import(args, registry, page_hooks=None):
     return EXIT_OK
 
 
+def _enrich_all(data_dir, registry, opts):
+    """Run every vendor's enrich(); [result], one per vendor with an export.
+
+    The exports are read first, under the import lock (exit 20 while an
+    import runs), so no read sees current/ mid-swap; the lookups then run
+    without it, so a long run doesn't block imports.
+    """
+    work = []
+    with store.import_lock(data_dir):
+        for vendor in registry:
+            current = os.path.join(data_dir, vendor.ID, "current")
+            if hasattr(vendor, "enrich") and os.path.isdir(current):
+                work.append((vendor, vendor.read(current)))
+    results = []
+    for vendor, orders in work:
+        vendor_dir = os.path.join(data_dir, vendor.ID)
+        try:
+            result = vendor.enrich(vendor_dir, opts, orders)
+        except fetching.EnrichError as e:
+            _log(f"order-history: {vendor.ID}: {e}")
+            result = fetching.new_result(vendor.ID)
+            result["error"] = {"message": str(e), "code": e.code}
+        results.append(result)
+    return results
+
+
+def _update_code(results, changed):
+    """The exit code for an update's results (see the module docstring).
+
+    A store's precondition error (3) comes first, since retrying can't fix
+    it; then 21 or 20 when any store stopped early or had failed lookups.
+    """
+    errors = [r["error"]["code"] for r in results if r["error"]]
+    if errors:
+        return errors[0]
+    if any(r["stopped"] or r["failed"] for r in results):
+        return EXIT_PARTIAL if changed else EXIT_RETRY_FREE
+    return EXIT_OK
+
+
+def _update_text(results, dry_run, page_path):
+    for r in results:
+        vid, skipped, error, stopped = (
+            r["store"],
+            r["skipped"],
+            r["error"],
+            r["stopped"],
+        )
+        if skipped:
+            _out(f"{vid}: skipped ({skipped})")
+            continue
+        if error:
+            _out(f"{vid}: not run: " + error["message"])
+            continue
+        pending, changed, requests = r["pending"], r["changed"], r["requests"]
+        if dry_run:
+            _out(f"{vid}: {pending} lookups to make; dry run, nothing fetched")
+            continue
+        n_failed = len(r["failed"])
+        _out(
+            f"{vid}: {changed} saved, {n_failed} failed, {pending} still missing, "
+            f"{requests} requests"
+        )
+        if stopped:
+            _out(f"{vid}: stopped: " + stopped["message"])
+    _out("page: " + (f"rebuilt {page_path}" if page_path else "unchanged"))
+
+
+def cmd_update(args, registry, page_hooks=None, fetch_hooks=None):
+    """Fill the vendors' caches (Adafruit items; Amazon images with the flag)."""
+    data_dir = _data_dir(args)
+    opts = fetching.Options(
+        email=args.email or "",
+        amazon_images=args.amazon_images,
+        dry_run=args.dry_run,
+        **{"log": _log, **(fetch_hooks or {})},
+    )
+    try:
+        with store.update_lock(data_dir):
+            results = _enrich_all(data_dir, registry, opts)
+    except store.StoreError as e:
+        raise CliError(str(e), e.code) from e
+    changed = sum(r["changed"] for r in results)
+    page_path = None
+    if changed:
+        try:
+            with store.import_lock(data_dir):
+                page_path = _build_page(data_dir, registry, page_hooks or {})["path"]
+        except page.PageError as e:
+            raise CliError(
+                f"{e} The caches were updated; run `order-history build` to retry.",
+                e.code,
+            ) from e
+        except store.StoreError as e:
+            raise CliError(
+                f"{e}. The caches were updated but the page wasn't rebuilt; run "
+                "`order-history build` when the import finishes.",
+                EXIT_PARTIAL,
+            ) from e
+    if args.json:
+        _emit_json(
+            {
+                "dry_run": args.dry_run,
+                "vendors": results,
+                "changed": changed,
+                "page": page_path,
+            }
+        )
+    else:
+        _update_text(results, args.dry_run, page_path)
+    return _update_code(results, changed)
+
+
 def build_parser():
     """The argument parser; --data-dir and --json work before or after the command."""
     common = argparse.ArgumentParser(add_help=False)
@@ -416,19 +550,50 @@ def build_parser():
         " release.",
     )
     p.set_defaults(func=cmd_build)
+    p = sub.add_parser(
+        "update",
+        parents=[common],
+        help="fetch Adafruit item lists (and Amazon images) and rebuild",
+        description="Fill in what the exports leave out, then rebuild the page:"
+        " Adafruit item lists, from Adafruit's order-status page (robots.txt"
+        " checked, at least 10 s between requests, stops when throttled), and"
+        " with --amazon-images, product images scraped from amazon.com. Fetches"
+        " only what is missing; with nothing missing it makes no request.",
+    )
+    p.add_argument(
+        "--email",
+        help="Adafruit account email (else $ADAFRUIT_EMAIL, else"
+        " <data>/adafruit/lookup_email.txt)",
+    )
+    p.add_argument(
+        "--amazon-images",
+        action="store_true",
+        help="also scrape amazon.com for product images (may be against"
+        " Amazon's conditions of use; off by default)",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report how many lookups are missing; send no request",
+    )
+    p.set_defaults(func=cmd_update)
     return parser
 
 
-def main(argv=None, registry=None, page_hooks=None):
+def main(argv=None, registry=None, page_hooks=None, fetch_hooks=None):
     """Run the CLI; returns the exit code.
 
     page_hooks (tests only) go to page.build(): cache, web_dir, build, fetch.
+    fetch_hooks (tests only) go to fetching.Options: urlopen, sleep, uniform,
+    random, log, today.
     """
     args = build_parser().parse_args(argv)
     args.data_dir = getattr(args, "data_dir", None)
     args.json = getattr(args, "json", False)
     try:
         registry = vendors.VENDORS if registry is None else registry
+        if args.func is cmd_update:
+            return cmd_update(args, registry, page_hooks, fetch_hooks)
         if args.func in (cmd_build, cmd_import):
             return args.func(args, registry, page_hooks)
         return args.func(args, registry)

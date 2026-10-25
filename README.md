@@ -50,9 +50,29 @@ open ~/Documents/"Order History"/index.html
 and `status` answer questions from the command line (add `--json` for
 agents), and `build` rebuilds the page by hand.
 
-Adafruit item lists and Amazon product images come back with
-`order-history update` in a later release; the old fetcher scripts were
-removed with the old page.
+`update` fills in what the exports leave out, then rebuilds the page:
+
+```bash
+echo you@example.com > ~/Documents/"Order History"/adafruit/lookup_email.txt
+skills/order-history/scripts/order-history update
+```
+
+- **Adafruit item lists** (on by default). Adafruit's guest order-status page
+  shows an order's items given the account email and order number. `update`
+  reads robots.txt first, sends one request at a time at least 10 seconds
+  apart, looks up only orders it hasn't already, and stops at the first sign
+  of throttling. The email comes from `--email`, `$ADAFRUIT_EMAIL` or
+  `adafruit/lookup_email.txt` in the data folder.
+- **Amazon product images** (only with `--amazon-images`). This scrapes
+  amazon.com product pages, which may be against Amazon's conditions of use,
+  so it is off unless you ask for it. Without the flag no request goes to
+  Amazon.
+
+`--dry-run` says how many lookups are missing without sending anything. With
+nothing missing, `update` sends no request and exits 0. It exits 20 when a
+site throttled (or robots.txt said no) before anything was saved, 21 when it
+saved some lookups and then stopped (run it again later), and 3 when Adafruit
+orders need items and there is no lookup email.
 
 ## Your data stays out of git
 

@@ -128,3 +128,25 @@ Prevention: have the planner ignore removed lines (or files listed with `D`) whe
 risk triggers.
 Fix belongs in: skill (review-swarm, `swarm.py plan`)
 Status: open
+
+## 2026-10-25T15:11-0700 — failed command: zsh does not word-split a command in a variable (again)
+Chapter: [M4](notebook/M4.md)
+What happened: a manual-run loop over `"update --dry-run"`-style strings ran
+`order-history $args`; zsh passed each whole string as one argument and argparse
+refused it (exit 2), three runs wasted. The M2 entry of the same shape is still open.
+Cost: one rerun.
+Prevention: write each command out, or use an array (`args=(update --dry-run)`;
+`"${args[@]}"`); in zsh `${=args}` splits explicitly.
+Fix belongs in: user instructions (shell command style: "the Bash tool runs zsh")
+Status: open
+
+## 2026-10-25T15:21-0700 — surprise: a privacy note that quoted its own grep patterns
+Chapter: [M4](notebook/M4.md)
+What happened: the M4 evidence file's "Privacy check" listed the patterns grepped for,
+and those patterns were the private domain, a LAN prefix and the local username, in a file
+bound for a public repo. The staged-diff grep itself caught it before the commit.
+Cost: one rewrite; no leak.
+Prevention: describe a privacy check by category ("private host names, LAN addresses"),
+never by the literal patterns; the pattern list belongs in the user's instructions only.
+Fix belongs in: user instructions (privacy section: "Grep the body for these patterns")
+Status: open
