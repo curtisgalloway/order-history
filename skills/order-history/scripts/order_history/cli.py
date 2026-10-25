@@ -6,10 +6,12 @@
 Data goes to stdout and messages to stderr. --json prints one JSON document.
 
 Exit codes: 0 ok; 1 nothing found; 2 bad usage, or a file no store (or several)
-recognizes; 3 no data folder (run init); 20 import changed nothing (another
-import is running, or a failure was rolled back), retry; 21 an import's
-rollback failed, check the folders named; 30 an older export without --force,
-or an unsafe zip member or folder entry.
+recognizes; 3 no data folder (run init); 4 the page couldn't be built: no
+page shell could be found (offline with no cache and no Node) or index.html
+couldn't be written; the old page is unchanged, and an import is undone; 20
+nothing changed: another import is running (also for build), or a failure was
+rolled back, retry; 21 an import's rollback failed, check the folders named;
+30 an older export without --force, or an unsafe zip member or folder entry.
 """
 
 import argparse
@@ -19,12 +21,13 @@ import os
 import re
 import sys
 
-from order_history import __version__, config, model, search, store, vendors
+from order_history import __version__, config, model, page, search, store, vendors
 
 EXIT_OK = 0
 EXIT_EMPTY = 1
 EXIT_USAGE = 2
 EXIT_NO_DATA = 3
+EXIT_NO_SHELL = page.EXIT_NO_SHELL
 EXIT_REFUSED = store.EXIT_REFUSED
 
 
@@ -130,12 +133,12 @@ def cmd_status(args, registry):
         if marker:
             entry["import_failed"] = marker
         report.append(entry)
-    page = os.path.join(data_dir, "index.html")
+    page_path = os.path.join(data_dir, page.PAGE_NAME)
     built = (
-        datetime.datetime.fromtimestamp(os.path.getmtime(page))
+        datetime.datetime.fromtimestamp(os.path.getmtime(page_path))
         .astimezone()
         .isoformat(timespec="seconds")
-        if os.path.exists(page)
+        if os.path.exists(page_path)
         else None
     )
     if args.json:
@@ -288,12 +291,53 @@ def _import_text(report):
         _out(f"  removed {name}, left by an interrupted import")
 
 
-def cmd_import(args, registry):
-    """Install an export (zip, CSV or folder), archiving the current one."""
+def _build_page(data_dir, registry, page_hooks):
+    """Write <data>/index.html from every vendor's current export."""
+    result = page.build(data_dir, _load_all(data_dir, registry), **page_hooks)
+    path, n_orders, shell = result["path"], result["orders"], result["shell"]
+    _log(f"wrote {path} ({n_orders} orders; page shell from {shell})")
+    return result
+
+
+def cmd_build(args, registry, page_hooks=None):
+    """Rebuild the page from the current exports."""
     data_dir = _data_dir(args)
     try:
+        # The import lock: a build must not read current/ mid-swap, nor
+        # overwrite the page an import has just written with older data.
+        with store.import_lock(data_dir):
+            result = _build_page(data_dir, registry, page_hooks or {})
+    except page.PageError as e:
+        raise CliError(str(e), e.code) from e
+    except store.StoreError as e:
+        raise CliError(str(e), e.code) from e
+    if args.json:
+        _emit_json(result)
+    else:
+        print(result["path"])
+    return EXIT_OK
+
+
+def cmd_import(args, registry, page_hooks=None):
+    """Install an export (zip, CSV or folder), archiving the current one."""
+    data_dir = _data_dir(args)
+    built = {}
+
+    def rebuild():
+        # Runs after the swap; a failure here undoes the import (store.py).
+        try:
+            built.update(_build_page(data_dir, registry, page_hooks or {}))
+        except page.PageError as e:
+            raise store.StoreError(str(e), e.code) from e
+
+    try:
         report = store.import_export(
-            data_dir, args.path, registry, dry_run=args.dry_run, force=args.force
+            data_dir,
+            args.path,
+            registry,
+            dry_run=args.dry_run,
+            force=args.force,
+            rebuild=rebuild,
         )
     except store.StoreError as e:
         raise CliError(str(e), e.code) from e
@@ -301,6 +345,7 @@ def cmd_import(args, registry):
         # Setting up the import (the vendor folder, the lock, staging) failed
         # before the current export was touched.
         raise CliError(f"import failed: {e}; nothing changed", EXIT_USAGE) from e
+    report["page"] = built.get("path")
     if args.json:
         _emit_json(report)
     else:
@@ -362,16 +407,31 @@ def build_parser():
         "--force", action="store_true", help="import an export older than the current"
     )
     p.set_defaults(func=cmd_import)
+    p = sub.add_parser(
+        "build",
+        parents=[common],
+        help="rebuild the page",
+        description="Write <data>/index.html from the current exports. Needs a page"
+        " shell: cached, built locally with npm, or downloaded once from the"
+        " release.",
+    )
+    p.set_defaults(func=cmd_build)
     return parser
 
 
-def main(argv=None, registry=None):
-    """Run the CLI; returns the exit code."""
+def main(argv=None, registry=None, page_hooks=None):
+    """Run the CLI; returns the exit code.
+
+    page_hooks (tests only) go to page.build(): cache, web_dir, build, fetch.
+    """
     args = build_parser().parse_args(argv)
     args.data_dir = getattr(args, "data_dir", None)
     args.json = getattr(args, "json", False)
     try:
-        return args.func(args, vendors.VENDORS if registry is None else registry)
+        registry = vendors.VENDORS if registry is None else registry
+        if args.func in (cmd_build, cmd_import):
+            return args.func(args, registry, page_hooks)
+        return args.func(args, registry)
     except CliError as e:
         _log(f"order-history: {e}")
         return e.code

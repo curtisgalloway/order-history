@@ -22,6 +22,8 @@ from order_history import model
 
 ID = "adafruit"
 NAME = "Adafruit"
+# Shown in the page footer.
+SOURCE = "order_history.csv + items.json"
 
 ORDERS_CSV = "order_history.csv"
 ITEMS_JSON = "items.json"

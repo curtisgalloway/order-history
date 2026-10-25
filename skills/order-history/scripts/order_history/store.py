@@ -11,7 +11,7 @@ The import flow, for the one vendor whose detect() claims the file:
      folder instead), or when the export is older than current/ without force
   4. rename current/ to archive/<old as_of>/
   5. rename the staging folder to current/
-  6. rebuild (a hook; the page arrives in M3)
+  6. rebuild (a hook: the CLI writes the page)
 
 If 5 or 6 fails, the renames are undone, so the previous export (if there
 was one) is current again. If undoing them fails too, nothing is removed: the
@@ -278,6 +278,14 @@ def _lock(data_dir):
         os.close(fd)
 
 
+def import_lock(data_dir):
+    """The import lock, for other writers of the data folder (the page build).
+
+    Raises StoreError (exit 20) at once if an import holds it.
+    """
+    return _lock(data_dir)
+
+
 def import_running(data_dir):
     """True while another process holds the import lock."""
     if fcntl is None:
@@ -380,7 +388,10 @@ def _swap(vendor_dir, staging, old_as_of, now, rebuild):
                 if archived is not None
                 else "no export is installed, as before"
             )
-            raise StoreError(f"couldn't {step} ({e}); {state}", EXIT_RETRY_FREE) from e
+            # A rebuild hook's own StoreError keeps its code (the page's
+            # exit 4 when no shell is found); anything else is retry-free.
+            code = e.code if isinstance(e, StoreError) else EXIT_RETRY_FREE
+            raise StoreError(f"couldn't {step} ({e}); {state}", code) from e
         raise
     return archived
 

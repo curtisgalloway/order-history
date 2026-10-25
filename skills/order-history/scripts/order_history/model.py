@@ -3,9 +3,9 @@
 
 """The normalized order shape every vendor loader returns, and its helpers.
 
-Copied from search/build.py, which keeps its own copies until M3 removes
-search/. A vendor's load() returns a list of orders built with new_order()
-and new_item(); finish() then fills in order totals and sorts.
+Taken from the old search/build.py (removed in M3). A vendor's load() returns
+a list of orders built with new_order() and new_item(); finish() then fills
+in order totals and sorts.
 """
 
 SENTINELS = {"", "Not Available", "Not Applicable"}

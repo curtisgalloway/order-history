@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Notebook index
 
-Updated: 2026-10-25T14:30-0700
+Updated: 2026-10-25T14:53-0700
 
 A row is stale when its chapter has an entry newer than "indexed through".
 
@@ -35,10 +35,20 @@ Outcome: complete; `import` with staging, comparison, archive, swap, rollback, s
 - A failed rollback writes `<vendor>/IMPORT-FAILED.txt` and blocks that store's imports (exit 21).
 - Folder imports copy the whole folder; M6 migration must gather the export first (backlog).
 
+### [M3 — Node-free page and retiring `search/`](M3.md)
+Entries: 2026-10-25T14:35-0700 through 2026-10-25T14:53-0700
+Outcome: complete; page shell + `page.py` (cache, local build, release download), `build`, `search/` deleted, `page` CI job, `release.yml`
+- Required checks are job names: the matrix `test` reports as `test (3.10)` and `test (3.x)`.
+- Every `<` in the data is escaped as `\u003c`; `FORMAT` and `DATA_FORMAT` are kept equal by a test.
+- Browser tool refuses `file://`; checked over a loopback server instead.
+- Review F1: the tag ruleset doesn't protect release assets; shell integrity is the user's call.
+
 ## Threads
 - **Privacy of tracked files:** [design](design.md) — the draft quoted account counts and
   had to be scrubbed; keep examples generic.
 - **Python 3.10 support:** [M1](M1.md), [M2](M2.md) — `build.py` needs 3.12; the new
   package and its lint rules keep to 3.10 syntax (f-string quote rule hit again in M2).
+- **Shell trust and release integrity:** [design](design.md), [M3](M3.md) — the design
+  relied on the tag ruleset; M3's review found assets aren't covered.
 - **Never deleting data:** [M2](M2.md) — the tool removes only its own `.staging-*`
   folders; rollback, the archive-name check and the failed-rollback note guard the rest.

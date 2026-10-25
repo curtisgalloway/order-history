@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Curtis Galloway
 // SPDX-License-Identifier: Apache-2.0
 
-// Shape of generated/data.json, written by search/build.py. Empty and false
-// fields are dropped by the build, so most fields are optional.
+// Shape of the page data that order-history's page.py writes into the page's
+// order-data element. Empty and false fields are dropped, so most fields are
+// optional.
 
 export interface Store {
   id: string;
@@ -54,6 +55,8 @@ export interface Order {
 }
 
 export interface Data {
+  /** Checked against DATA_FORMAT (load.ts) before anything else is read. */
+  format: number;
   generated: string;
   stores: Store[];
   orders: Order[];

@@ -19,8 +19,10 @@ Project checks:
 
 ## Conventions
 
-**Branching.** `main` is protected: changes go through a pull request, and
-`build` and `lint` are required checks until M3 changes them.
+**Branching.** `main` is protected: changes go through a pull request. Required
+checks: `build` and `lint` until M3; from M3's merge, `lint`, `page`,
+`test (3.10)` and `test (3.x)` (GitHub reports a matrix job per leg, so a bare
+`test` context would never report).
 
 - Each milestone works on its own branch, `m<N>-<slug>`, made from an
   up-to-date `origin/main`.
@@ -54,7 +56,7 @@ counts (AGENTS.md, "Before committing").
 |----|---------|--------------|--------|
 | M1 | Package, data folder, vendors load; `init`/`status`/`search`/`order` | — | complete |
 | M2 | `import`: detect, stage, compare, archive, swap, rollback | M1 | complete |
-| M3 | Node-free page; `search/` removed; CI and release workflow | M2 | pending |
+| M3 | Node-free page; `search/` removed; CI and release workflow | M2 | complete |
 | M4 | `update`: Adafruit items, opt-in Amazon images | M3 | pending |
 | M5 | Skill, vendor docs, `--skill`, plugin manifest, packaging, docs | M4 | pending |
 | M6 | Migrate real data, final verification, first release | M5 | pending |
@@ -120,79 +122,34 @@ Open limitations:
 
 ## M3 — Node-free page and retiring `search/`
 
-**Design coverage:** R7
+**Outcome:** the page shell (`web/`, moved from `search/app`) reads its data from
+`<script id="order-data">` and shows a message on a `format` mismatch; `page.py` gets a
+shell from the cache, a local npm build or the release download, escapes every `<`, and
+writes `<data>/index.html` atomically (exit 4 with none); `import` rebuilds, and a new
+`build` command rebuilds by hand under the import lock. `search/` is deleted. CI has a
+`page` job (including `search_cases.json` against `search.ts` under Node), and
+`release.yml` attaches `page-shell.html` to a `v*` tag's release. 122 unit tests.
 
-**Dependencies:** M2
-
-**In scope:**
-
-- move `search/app` to `web/`, and read the data from
-  `<script id="order-data">`;
-- the data `format` number and the page's message when it doesn't match;
-- `page.py` with the three-step shell lookup and atomic writes;
-- rebuilding after import;
-- delete `search/`;
-- CI: a `page` job, and a release workflow that attaches `page-shell.html`;
-- the required checks become `lint`, `test` and `page`.
-
-**Out of scope:** `update` (M4).
-
-### Implementation steps
-
-1. Move the folder with `git mv search/app web`. Remove `json.stringify` and
-   `generated/`. `main.tsx` parses the script element. The shell is built
-   with that element empty.
-2. `page.py`:
-   - Look in the cache, then try a local build, then download from
-     `https://github.com/<owner>/<repo>/releases/download/v<version>/page-shell.html`.
-   - Escape `</` in the JSON before putting it in.
-   - Write to a temporary file, then rename it into place.
-   - Exit 4 when no shell can be found, and leave the existing page alone.
-3. `import` calls `page.build()` after a successful swap.
-4. Add `.github/workflows/release.yml`. On a pushed `v*` tag it builds the
-   shell and uploads it to that release (`contents: write` for that job
-   only). Actions are pinned to commit SHAs.
-5. Change the required checks without blocking this milestone's own pull
-   request. Branch protection requires `build`, which this pull request
-   renames to `page`. Before merging, re-run `harden_repo.sh` with
-   `lint test page`, with the user's go-ahead. Then confirm with
-   `gh api …/protection`.
-6. Delete `search/`, and update the `.gitignore` entries. Keep ignoring the
-   old in-checkout data paths (R9).
-
-### Acceptance criteria
-
-- [ ] With `node` removed from `PATH` and a shell in the cache, `import`
-  writes `<data>/index.html`, and the page shows the fixture orders.
-  Checked in a browser.
-- [ ] With the download stubbed, the shell is fetched once, cached, and used
-  again.
-- [ ] Offline, with no cache and no Node: exits 4, and the old page is unchanged.
-- [ ] A page built with a mismatched `format` shows the mismatch message.
-- [ ] Order data containing `</script>` doesn't break the page.
-- [ ] CI's `page` job builds the shell and passes. The release workflow passes
-  `actionlint`, or a manual review where that tool isn't available.
-- [ ] `search/` is gone, and nothing refers to it.
-
-### Testing and review
-
-- **Tests:** the three shell sources; injection escaping; atomic writes;
-  exit 4.
-- **Manual:** open the built page and search the fixture data. Check the
-  browser console for errors.
-- **Review focus:** HTML injection safety; the release workflow's permissions
-  and pinning; the branch-protection change order.
-
-### Session sizing
-
-Start from `web/` (the moved app), the design's "Page" section and the CI
-files. The uncertainty is in the Vite build with an empty data element. Split
-point if it grows: land `page.py` against a shell built locally first, then
-the release workflow and the CI changes.
+**Design coverage:** R7, R9 (`.gitignore`). **Dependencies:** M2.
 
 ### Evidence and findings
 
-Status: pending. Evidence: [M3](evidence/M3.md). Notebook: [M3](notebook/M3.md).
+Status: complete. Evidence: [M3](evidence/M3.md) (full milestone definition, checks and
+review). Notebook: [M3](notebook/M3.md).
+
+Open limitations:
+
+- Branch protection still requires `build`: the change to `lint`, `page`, `test (3.10)`,
+  `test (3.x)` is gated on the user (command in the evidence file) and must run before
+  this milestone's pull request merges.
+- The browser check ran over a loopback HTTP server; the browser tool refuses `file://`.
+  Opening `<data>/index.html` from disk once by hand is open.
+- A downloaded shell is checked only for its structure, not a checksum (review F1). The
+  user decides between pinning a SHA-256 in the package and turning on immutable releases.
+- Until M6 tags a release, a machine without Node can't build the page; `__version__` must
+  equal the tag's version (`release.yml` checks).
+- No Adafruit item or Amazon image fetching until M4 (the scripts went with `search/`; port
+  them from `15fb0ad:search/fetch_*.py`).
 
 ## M4 — Update
 
@@ -366,9 +323,14 @@ Status: pending. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
 
 ## Discovered work / backlog
 
-- Run `search_cases.json` against `web/src/search.ts` in the `page` job, using
-  Node, so the two search implementations can't drift (a design risk). Small;
-  can be added to M3 if there's room.
+- Done in M3: `search_cases.json` runs against `web/src/search.ts` in the `page` job.
+- The design's "Key decisions" says the tag ruleset stops a version's shell from being
+  swapped; it doesn't cover release assets (M3 review F1). Correct the design when the user
+  picks pinning or immutable releases.
+- The design's data-folder layout lists `data.json`; M3 doesn't write it (nothing reads it).
+  Drop it from the design at the next revision.
+- UI development lost live data: `npm run dev` shows the "no order data" message. If it's
+  missed, let the dev server read a built page's data.
 - `status` parses each export twice (`load`, then `as_of`), and so does `import` for each
   side (`read`, then `as_of`; M2 review F10). Harmless at today's sizes; fold `as_of` into
   the loaded orders if it ever shows.
@@ -381,6 +343,8 @@ Status: pending. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
   gigabytes with photos and invoices.
 - Add exit codes 20/21 (import busy or rolled back / rollback failed) to the design's
   exit-code table and the skill (M5).
+- Exit 4 (no page shell, or the page couldn't be written) and `build` belong in the design's
+  exit-code table and the skill (M5).
 - The CLI has no equivalent of the page's Orders-view search (terms spread across an
   order's items). Add `search --orders` if an agent needs it.
 - Phase 2: a download flow for each vendor, and `add --provisional` from order
@@ -388,20 +352,25 @@ Status: pending. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
 
 ## Next session
 
-- **Current milestone:** M2 complete (checkpoint commit `plan: M2 — Import` on branch
-  `m2-import`). M3 is next.
-- **Completed work:** M1 merged in PR #3 (`630d459`). M2 is committed locally on
-  `m2-import`; pushing it and opening and merging its pull request are the orchestrator's
-  (with the user's go-ahead).
-- **Uncommitted state:** none for the milestone. `.no-pitch` (made by the user for a local
-  pre-write hook) is gitignored and stays untracked.
-- **Decisions pending:** none for M3.
+- **Current milestone:** M3 complete (checkpoint commit `plan: M3 — Node-free page and
+  retiring search/` on branch `m3-page`). M4 is next.
+- **Completed work:** M1 (PR #3) and M2 (PR #4) merged. M3 is committed locally on
+  `m3-page`; pushing, the pull request and merging are the orchestrator's (with the user's
+  go-ahead).
+- **Gated before M3 merges:** re-run `harden_repo.sh` with `lint page "test (3.10)"
+  "test (3.x)"` and confirm (exact commands in [M3 evidence](evidence/M3.md#branch-protection-plan-step-5-gated)),
+  after the pull request's `page` job is green.
+- **Uncommitted state:** none for the milestone. `.no-pitch` stays untracked.
+- **Decisions pending:** shell integrity (M3 review F1): pin a SHA-256 of
+  `page-shell.html` in the package, or turn on GitHub immutable releases (the release
+  workflow already publishes draft-first so either works). Not blocking M4.
 - **Context boundary:** normal completion.
-- **Resume action:** after M2 merges, create `m3-page` from an up-to-date `origin/main`
-  and begin M3. `import` calls the `rebuild=` hook of `store.import_export()` after the
-  swap; a failure there already rolls back.
+- **Resume action:** after M3 merges, create `m4-update` from an up-to-date `origin/main`
+  and begin M4. The fetchers are in git history: `git show 15fb0ad:search/fetch_adafruit_items.py`
+  and `git show 15fb0ad:search/fetch_images.py`. `update` rebuilds through
+  `cli._build_page()` (take `store.import_lock()` as `build` does).
 - **Read first:**
-  - [design](design.md), "Page" and R7;
-  - this plan's M3 section;
+  - [design](design.md), R6;
+  - this plan's M4 section;
   - [notebook index](notebook/index.md);
-  - `search/app/`, `search/build.py` and `order_history/store.py` (`import_export`).
+  - the two fetchers (from history), `order_history/vendors/`, `order_history/page.py`.

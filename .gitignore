@@ -4,14 +4,16 @@
 /Additional Data/
 /Adafruit/
 
-# Derived from the exports (purchase lists, product image lookups).
-/search/index.html
-/search/images.json
-/search/app/src/generated/
-/search/app/dist/
+# The old in-checkout page and caches (search/ was removed in M3). A checkout
+# that still has them must not leak them: search/index.html and
+# search/images.json hold purchase data.
+/search/
+
+# The page shell build (data-free, but never committed: releases publish it).
+/web/dist/
 
 # Tooling
-/search/app/node_modules/
+/web/node_modules/
 .DS_Store
 __pycache__/
 

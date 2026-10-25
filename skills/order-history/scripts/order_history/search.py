@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Curtis Galloway
 # SPDX-License-Identifier: Apache-2.0
 
-"""Search with the page's matching rules (search/app/src/search.ts).
+"""Search with the page's matching rules (web/src/search.ts).
 
 Every order gets a lower-cased haystack of its own fields, and every item one
 of its fields. An item matches when each query term is in the order's
