@@ -29,7 +29,9 @@ Use the first that works:
 1. `order-history` on `PATH` (installed with `uv tool install`). Check with
    `order-history --version`.
 2. `python3 <skill-dir>/scripts/order-history`, where `<skill-dir>` is the folder that
-   holds this SKILL.md. Needs Python 3.10 or later and nothing else.
+   holds this SKILL.md. Needs Python 3.10 or later and nothing else. This is the normal
+   case when the skill runs from a clone or a plugin, so a "command not found" from step 1
+   is expected there.
 
 If the data folder holds a `NOTES.md` (the user's notes about their exports: whose
 account, when each was downloaded), read it before importing or answering questions about
@@ -38,7 +40,10 @@ coverage. Keep it out of anything you write elsewhere.
 Below, `order-history` stands for whichever one works. Every command takes `--json` (one
 JSON document on stdout; messages and progress go to stderr) and `--data-dir PATH`.
 Prefer `--json` and read the document rather than the exit status alone (the one exception
-is `--skill`, which always prints this file as Markdown). The command never prompts, so it is safe to run unattended.
+is `--skill`, which always prints this file as Markdown). When a command fails before it
+has a result to report (no data folder, bad usage, a file no store recognizes), stdout is
+empty: read the exit code and the one-line reason on stderr instead. The command never
+prompts, so it is safe to run unattended.
 
 The store instructions are in `vendors/<store>.md` beside this file: what to download,
 the export's columns and quirks, and how to read the raw files when the commands don't
@@ -113,16 +118,25 @@ It returns orders, newest first, each holding only its matching items. Its docum
 means nothing matched, which is an answer, not an error: try fewer or other terms
 (a brand, a shorter word) before telling the user there is no such purchase.
 
-An order has `store`, `id`, `date` (YYYY-MM-DD), `currency`, `items` (each with `name`,
-`qty`, and when known `unit`, `total`, `url`, and `asin` or `pid`), and when present
-`total`, `status` (`In progress` for an order still in flight; absent for the normal
-finished state), `digital`, `site`, `shipMethod`, `url` and `summary`. Empty fields are
-left out. An Adafruit order with an empty `items` list hasn't had its item list fetched
-yet (see `update`).
+Substring matching also brings in noise: a short term matches inside unrelated words
+(`air` in "pairs", `rework` in "fireworks"). Search with the most distinctive word of the
+product first, read every result before answering, and confirm with a second term when
+the first returns several unrelated orders.
 
-`status` lists each store with `status` (`ok` or `missing`), `as_of`, `orders`, `items`,
-and `gaps` (`items_unfetched` for Adafruit, `images_missing` for Amazon), plus
-`page_built` and `import_running`. `import_failed` on a store means an import couldn't
+An order has `store`, `id`, `date` (YYYY-MM-DD), `currency`, `source` (`export`),
+`items`, and when present `total`, `status` (`In progress` for an order still in flight;
+absent for the normal finished state), `digital`, `site`, `shipMethod`, `url` and
+`summary`. Each item has `name` and `qty`, and when known `unit`, `total`, `url`, `asin`
+or `pid`, `department` (Amazon's category) and `noImage` (true when the image lookup found
+none). Empty fields are left out. An Adafruit order with an empty `items` list hasn't had
+its item list fetched yet (see `update`). An order's `total` covers every item in it, not
+only the matching ones. Returns and refunds are not in these results; for Amazon they are
+in the export's own files (see `vendors/amazon.md`).
+
+`status` prints `{data_dir, vendors, page_built, import_running}`. `vendors` lists each
+store with `id`, `name`, `status` (`ok` or `missing`), and for an imported store `as_of`,
+`orders`, `items` and `gaps` (`items_unfetched` for Adafruit, `images_missing` for
+Amazon). `import_failed` on a store means an import couldn't
 undo itself: tell the user and show them the file it names before doing anything else.
 
 `order-history build` rebuilds the page from the current exports (import and update do it
@@ -203,9 +217,19 @@ at the checkout's top level, `Adafruit/order_history.csv`, `Adafruit/items.json`
 them into a data folder (`$C` is that checkout, `$D` the data folder; quote both, since
 the paths have spaces):
 
-1. Note each store's order and item counts from the old page or `LOCAL.md`, to compare at
-   the end.
-2. `order-history init`, then confirm `$D` with `order-history status --json`.
+1. Count each store's orders and items in the old build, to compare at the end. If
+   `$C/search/app/src/generated/data.json` exists (the old page's data, written by the
+   same build), count from it:
+
+   ```bash
+   python3 -c 'import json, sys, collections; d = json.load(open(sys.argv[1])); r = d["orders"]; print(d["generated"], dict(collections.Counter(x["store"] for x in r)), {s: sum(len(x["items"]) for x in r if x["store"] == s) for s in {x["store"] for x in r}})' "$C/search/app/src/generated/data.json"
+   ```
+
+   Otherwise use the counts `LOCAL.md` records for the last build.
+2. `order-history init`, then confirm `$D` with `order-history status --json`. Start the
+   notes now, so the counts are written down before anything moves:
+   `cp "$C/LOCAL.md" "$D/NOTES.md"` (if there is one), then add the step 1 counts to
+   `$D/NOTES.md`. They describe the account, so they go there and nowhere else.
 3. Amazon: if the original zip is still around, `order-history import <zip>`. Otherwise
    gather the export's folders into one new folder outside the checkout first (importing a
    folder copies all of it, and the checkout also holds the code and `.git`):
@@ -216,21 +240,28 @@ the paths have spaces):
    order-history import "$HOME/amazon-export" --json
    ```
 
-   Copy every top-level folder the zip unpacked, not only these three.
-4. Adafruit: `order-history import "$C/Adafruit/order_history.csv" --json`.
-5. The caches and notes keep their formats; copy them in:
+   Copy every top-level folder the zip unpacked, not only these three; an archived copy
+   under `$C/archive/` shows which folders an export had. Preview with `--dry-run` first,
+   as for any import: its `after` counts should already match step 1.
+4. Adafruit: `order-history import "$C/Adafruit/order_history.csv" --json`. Its report
+   shows 0 items, since the item lists are in the cache copied next.
+5. The caches keep their formats; copy them in:
 
    ```bash
    cp "$C/Adafruit/items.json" "$C/Adafruit/lookup_email.txt" "$D/adafruit/"
    cp "$C/search/images.json" "$D/amazon/"
-   cp "$C/LOCAL.md" "$D/NOTES.md"
    mkdir -p "$D/amazon/archive" "$D/adafruit/archive"
    cp -R "$C/archive/amazon-2026-01-31" "$D/amazon/archive/2026-01-31-from-checkout"
    ```
 
-   Copy each `archive/<store>-<date>/` folder that way, into that store's `archive/`.
+   Copy each `archive/<store>-<date>/` folder that way, into that store's `archive/`. Do
+   not copy `LOCAL.md` over `NOTES.md` again here: step 2 already did, and the counts are
+   in it now.
 6. `order-history build`, then `order-history status --json`: the counts must match step 1.
-   Open `$D/index.html` and search for something the user knows they bought.
-7. Only after the user has checked, and only with their go-ahead, delete the old folders
-   from the checkout (and `$HOME/amazon-export`). They are gitignored, so git won't show
-   them as changes either way.
+   Add the result to `$D/NOTES.md`. Open `$D/index.html` and search for something the
+   user knows they bought.
+7. Only after the user has checked, and only with their go-ahead, delete the old copies:
+   from the checkout, the export folders, `Adafruit/`, `search/` (the old page, its
+   `images.json` and its generated `data.json`), `archive/` and `LOCAL.md`; and the
+   gathered `$HOME/amazon-export`. Compare each with its copy in `$D` first (file counts
+   or checksums). They are gitignored, so git won't show them as changes either way.
