@@ -231,3 +231,15 @@ Prevention: build the privacy patterns from AGENTS.md's list item by item, dates
 placeholders (`<date>`) while drafting rather than scrubbing later.
 Fix belongs in: project instructions (AGENTS.md "Before committing": name the date sources)
 Status: open
+
+## 2026-10-25T16:21-0700 — failed command: editing a file written through the shell
+Chapter: [M6](notebook/M6.md)
+What happened: `docs/evidence/M6.md` was created with the file-writing tool, then changed
+by shell commands and edited again. The edit tool refused twice ("File has not been read
+yet") until the file was read again; the first refusal was a recheck note that had to be
+rewritten.
+Cost: two failed edits and two extra reads.
+Prevention: after changing a file with a shell command, read the region again before using
+the edit tool on it; or make all changes to that file through one mechanism.
+Fix belongs in: user instructions (the "On Claude Code" tool notes)
+Status: open
