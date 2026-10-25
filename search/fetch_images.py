@@ -37,13 +37,18 @@ ORDERS_CSV = os.path.join(BASE, "Your Amazon Orders", "Order History.csv")
 DIGITAL_CSV = os.path.join(BASE, "Your Amazon Orders", "Digital Content Orders.csv")
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images.json")
 
-UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
 CAPTCHA_MARKERS = (b"validateCaptcha", b"Robot Check", b"To discuss automated access")
 IMG_PATTERNS = (
     re.compile(rb'"hiRes":"https://m\.media-amazon\.com/images/I/([^".]+)\.'),
     re.compile(rb'data-old-hires="https://m\.media-amazon\.com/images/I/([^".]+)\.'),
-    re.compile(rb'id="landingImage"[^>]*src="https://m\.media-amazon\.com/images/I/([^".]+)\.'),
+    re.compile(
+        rb'id="landingImage"[^>]*'
+        rb'src="https://m\.media-amazon\.com/images/I/([^".]+)\.'
+    ),
 )
 
 
@@ -93,11 +98,14 @@ def probe_p(asin):
 def scrape_dp(asin):
     """Return ('ok', imageId) | ('none', None) | ('captcha', None)."""
     url = f"https://www.amazon.com/dp/{asin}"
-    req = urllib.request.Request(url, headers={
-        "User-Agent": UA,
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept": "text/html,application/xhtml+xml",
-    })
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": UA,
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml",
+        },
+    )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             body = resp.read()
@@ -120,10 +128,15 @@ def scrape_dp(asin):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--limit", type=int, default=0,
-                    help="max dp pages to scrape this run (0 = no limit)")
-    ap.add_argument("--delay", type=float, default=2.0,
-                    help="seconds between dp page fetches")
+    ap.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="max dp pages to scrape this run (0 = no limit)",
+    )
+    ap.add_argument(
+        "--delay", type=float, default=2.0, help="seconds between dp page fetches"
+    )
     args = ap.parse_args()
 
     asins = load_asins()
@@ -147,16 +160,20 @@ def main():
 
     misses = [a for a in asins if cache.get(a, {"src": "tbd"})["src"] == "tbd"]
     if args.limit:
-        misses = misses[:args.limit]
-    print(f"phase B: scraping {len(misses)} product pages "
-          f"(~{len(misses) * args.delay / 60:.0f} min) ...")
+        misses = misses[: args.limit]
+    print(
+        f"phase B: scraping {len(misses)} product pages "
+        f"(~{len(misses) * args.delay / 60:.0f} min) ..."
+    )
     scraped = 0
     for asin in misses:
         status, image_id = scrape_dp(asin)
         if status == "captcha":
             save_cache(cache)
-            print(f"  captcha/throttle after {scraped} pages — stopping; "
-                  "re-run later to continue")
+            print(
+                f"  captcha/throttle after {scraped} pages — stopping; "
+                "re-run later to continue"
+            )
             sys.exit(1)
         cache[asin] = {"src": "i", "id": image_id} if status == "ok" else {"src": None}
         scraped += 1
@@ -169,8 +186,12 @@ def main():
     counts = {"p": 0, "i": 0, None: 0, "tbd": 0}
     for v in cache.values():
         counts[v["src"]] += 1
-    print(f"done: {counts['p']} via P/ CDN, {counts['i']} via product page, "
-          f"{counts[None]} unavailable, {counts['tbd']} still to scrape")
+    via_cdn, via_page = counts["p"], counts["i"]
+    missing, todo = counts[None], counts["tbd"]
+    print(
+        f"done: {via_cdn} via P/ CDN, {via_page} via product page, "
+        f"{missing} unavailable, {todo} still to scrape"
+    )
     print("now run: python3 search/build.py")
 
 
