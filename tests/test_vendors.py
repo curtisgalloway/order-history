@@ -3,9 +3,7 @@
 
 """The Amazon and Adafruit loaders on the invented fixtures."""
 
-import importlib.util
 import os
-import sys
 import tempfile
 import unittest
 import zipfile
@@ -16,7 +14,6 @@ from order_history.vendors import adafruit, amazon
 
 AMAZON = os.path.join(support.FIXTURE_DATA, "amazon")
 ADAFRUIT = os.path.join(support.FIXTURE_DATA, "adafruit")
-BUILD_PY = os.path.join(support.REPO, "search", "build.py")
 
 
 def _by_id(orders):
@@ -167,40 +164,6 @@ class RegistryTest(unittest.TestCase):
                 self.assertTrue(hasattr(v, name), f"{v.ID}.{name}")
         self.assertIs(vendors.by_id("adafruit"), adafruit)
         self.assertIsNone(vendors.by_id("nope"))
-
-
-def _load_build_py(base):
-    """search/build.py with its export paths pointed into `base`."""
-    spec = importlib.util.spec_from_file_location("legacy_build", BUILD_PY)
-    build = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(build)
-    a_cur = os.path.join(base, "amazon", "current", "Your Amazon Orders")
-    build.AMAZON_ORDERS_CSV = os.path.join(a_cur, "Order History.csv")
-    build.AMAZON_DIGITAL_CSV = os.path.join(a_cur, "Digital Content Orders.csv")
-    build.IMAGES_JSON = os.path.join(base, "amazon", "images.json")
-    build.ADAFRUIT_CSV = os.path.join(base, "adafruit", "current", "order_history.csv")
-    build.ADAFRUIT_ITEMS_JSON = os.path.join(base, "adafruit", "items.json")
-    return build
-
-
-# build.py uses an f-string form (nested double quotes) that needs 3.12, and
-# search/ goes away in M3.
-@unittest.skipUnless(
-    os.path.exists(BUILD_PY) and sys.version_info >= (3, 12),
-    "needs search/build.py and Python 3.12+",
-)
-class MatchesBuildPyTest(unittest.TestCase):
-    """The moved loaders give what search/build.py gives for the same input."""
-
-    def test_same_orders(self):
-        build = _load_build_py(support.FIXTURE_DATA)
-        for legacy, ours in (
-            (build.load_amazon(), amazon.load(AMAZON)),
-            (build.load_adafruit(), adafruit.load(ADAFRUIT)),
-        ):
-            for order in ours:
-                self.assertEqual(order.pop("source"), "export")
-            self.assertEqual(ours, legacy)
 
 
 if __name__ == "__main__":

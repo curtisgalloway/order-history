@@ -3,8 +3,6 @@
 
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useDeferredValue, useLayoutEffect, useMemo, useRef, useState } from "react";
-// tsc infers a type from the file itself; with no exports its arrays are never[].
-import generated from "./generated/data.json";
 import { ItemRowView, OrderCard } from "./Rows";
 import {
   buildIndex,
@@ -12,16 +10,12 @@ import {
   filterOrders,
   parseTerms,
   type Filters,
+  type Index,
   type Kind,
 } from "./search";
 import type { Data } from "./types";
 
 type View = "items" | "orders";
-
-const data = generated as Data;
-
-const index = buildIndex(data);
-const storeName = Object.fromEntries(data.stores.map((s) => [s.id, s.name]));
 
 function Seg<T extends string>({
   label,
@@ -45,7 +39,7 @@ function Seg<T extends string>({
   );
 }
 
-function Stats() {
+function Stats({ data, index }: { data: Data; index: Index }) {
   const dates = data.orders.map((o) => o.date).filter(Boolean).sort();
   return (
     <div className="stats">
@@ -67,7 +61,12 @@ function Stats() {
   );
 }
 
-export function App() {
+export function App({ data }: { data: Data }) {
+  const index = useMemo(() => buildIndex(data), [data]);
+  const storeName = useMemo(
+    () => Object.fromEntries(data.stores.map((s) => [s.id, s.name])),
+    [data],
+  );
   const [query, setQuery] = useState("");
   const [store, setStore] = useState("");
   const [kind, setKind] = useState<Kind>("");
@@ -80,11 +79,11 @@ export function App() {
   );
   const itemRows = useMemo(
     () => (view === "items" ? filterItems(index.items, filters) : []),
-    [view, filters],
+    [index, view, filters],
   );
   const orderRows = useMemo(
     () => (view === "orders" ? filterOrders(index.orders, filters) : []),
-    [view, filters],
+    [index, view, filters],
   );
   const count = view === "items" ? itemRows.length : orderRows.length;
   const total = view === "items" ? index.items.length : index.orders.length;
@@ -134,7 +133,7 @@ export function App() {
         <div className="barcode">
           <small>ORDER·ARCHIVE</small>
         </div>
-        <Stats />
+        <Stats data={data} index={index} />
       </header>
 
       <div className="controls" ref={controlsRef}>
@@ -218,7 +217,7 @@ export function App() {
       <footer>
         <span>Sources: {data.stores.map((s) => s.source).join(" · ")}</span>
         <span>
-          built {data.generated} · regenerate: python3 search/build.py
+          built {data.generated} · rebuild: order-history build
         </span>
       </footer>
     </div>

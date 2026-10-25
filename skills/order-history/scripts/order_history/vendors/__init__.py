@@ -6,6 +6,7 @@
 Each vendor is a module providing:
 
   ID, NAME
+  SOURCE                the files it reads, for the page footer (optional)
   detect(path)          does this zip, CSV or folder hold this store's export?
                         Reads contents, never the filename.
   install(src, dest)    unpack or copy the export into the empty folder dest

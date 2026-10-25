@@ -28,16 +28,14 @@ unzipping the downloads here; they are not in git.
 ├── AGENTS.md, README.md, GLOSSARY.md, LICENSE
 ├── LOCAL.md                         ← (gitignored) facts about these exports
 ├── archive/                         ← (gitignored) earlier exports, replaced by newer ones
-├── search/
-│   ├── build.py                     ← exports → app data → index.html (one command)
-│   ├── app/                         ← Vite + React + TypeScript source of the page
-│   ├── fetch_images.py              ← builds images.json (ASIN → product image)
-│   ├── fetch_adafruit_items.py      ← builds Adafruit/items.json (order → items)
-│   ├── images.json                  ← (gitignored) cached image lookups; resumable
-│   └── index.html                   ← (gitignored) generated page; open directly
+├── skills/order-history/scripts/
+│   ├── order-history                ← the command-line tool (init, import, search, build, …)
+│   └── order_history/               ← its package: vendors/, store.py, page.py, …
+├── web/                             ← Vite + React + TypeScript source of the page shell
+├── tests/                           ← unit tests, invented fixtures only
 ├── Adafruit/
 │   ├── order_history.csv            ← Adafruit account export (order-level only)
-│   ├── items.json                   ← item lines per order, from fetch_adafruit_items.py
+│   ├── items.json                   ← item lines per order, from the item fetcher
 │   └── lookup_email.txt             ← account email for the order-status lookup
 ├── Your Amazon Orders/
 │   ├── Order History.csv            ← ★ the main file: all physical orders
@@ -68,7 +66,8 @@ unzipping the downloads here; they are not in git.
   `Original Quantity`, `Unit Price`, `Total Amount`, `Currency`,
   `Shipping Address`, `Carrier Name & Tracking Number`, `Ship Date`,
   `Payment Method Type`, `Website`, and (exports from late 2026 on)
-  `Department`, the product category; `build.py` reads it when present.
+  `Department`, the product category; the Amazon vendor module reads it
+  when present.
 - `Website` holds the marketplace (`Amazon.com`, `Amazon.co.uk`, …) and
   sometimes internal codes. Check `Currency` before assuming USD.
 - `Order Status` values (payment lifecycle, **order-level** — a row whose item
@@ -93,20 +92,21 @@ item lines**: totals (`subtotal`, `shipping`, `tax`, `coupon`,
 addresses.
 
 - The export writes `-` as a space: an order ID comes out as
-  `1234567 1234567890` and a date as `2024 01 31 12:00:00`. `build.py` puts
-  the hyphens back (`1234567-1234567890`, `2024-01-31`), which matches how
+  `1234567 1234567890` and a date as `2024 01 31 12:00:00`. The Adafruit
+  vendor module puts the hyphens back (`1234567-1234567890`, `2024-01-31`), which matches how
   adafruit.com's order-status page shows them. Times are store-local, not
   UTC (the page shows `12:00:00` as "12:00 PM").
 - `shipping_method` holds HTML (sometimes truncated) with `=` also mangled to
-  spaces; `build.py` strips the tags.
-- Item lists are not in the CSV. `search/fetch_adafruit_items.py` gets them
-  from Adafruit's guest "Order Status" form (on the account sign-in page),
+  spaces; the vendor module strips the tags.
+- Item lists are not in the CSV. A fetcher gets them (it was
+  `fetch_adafruit_items.py`, removed with the old page in M3 and returning as
+  `order-history update` in M4; see git history before M3) from Adafruit's guest "Order Status" form (on the account sign-in page),
   which shows an order's items given the account email and full order
   number, with no login: a POST of `email` and `order_number` to
   `https://www.adafruit.com/index.php?main_page=account_history_info`. Each
   item line on that page is a `div.row.confirm-cart.mobile-text-wrapper`
   holding the product link, `PID: <n>`, image, unit price, quantity and line
-  total. Results are cached in `Adafruit/items.json`; `build.py` merges them,
+  total. Results are cached in `items.json`; the vendor module merges them,
   and orders not yet fetched show "item list not in export".
 - The fetcher is deliberately polite: it reads robots.txt with its own
   User-Agent (Adafruit answers Python's default one with 403, which Python's
@@ -170,35 +170,42 @@ with open("Your Amazon Orders/Order History.csv", newline="") as f:
 
 ### Search tool (web UI)
 
-`search/index.html` is a self-contained page with live search over every
-store's orders, including product thumbnails. Filters: store,
+The page is a self-contained `index.html` in the data folder with live search
+over every store's orders, including product thumbnails. Filters: store,
 physical/digital, and an Items/Orders view (Orders groups items under one card
 per order and highlights the matching items). The list is virtualized, so
-thousands of rows scroll without paging. Open it directly
-(`open search/index.html`) — no server needed; the data is embedded. After
-replacing an export with a newer one, regenerate it (needs Node/npm; runs
-`npm ci` on first use):
+thousands of rows scroll without paging. Open it directly — no server needed;
+the data is embedded. `order-history import` rebuilds it; to rebuild by hand:
 
 ```bash
-python3 search/build.py
+skills/order-history/scripts/order-history build
 ```
 
 How it fits together:
 
-- `build.py` has one loader per store (`load_amazon`, `load_adafruit`), each
-  returning orders in one normalized shape (documented on `new_order()`). A
-  store whose export is missing is skipped. It writes
-  `search/app/src/generated/data.json`, runs `npm run build` (Vite with
-  `vite-plugin-singlefile` inlines JS, CSS and data into one file), and copies
-  `app/dist/index.html` to `search/index.html`.
-- To add a store: write `load_<store>()`, add it to `STORES`, and add a
-  `--store-<id>` color in `app/src/styles.css`.
-- UI development: `python3 search/build.py --data-only`, then
-  `npm --prefix search/app run dev` for a hot-reloading dev server.
+- Each store is a vendor module (`order_history/vendors/<store>.py`) returning
+  orders in one normalized shape (documented on `model.new_order()`). A store
+  with no imported export is skipped.
+- `web/` builds the **page shell**: the page with its
+  `<script id="order-data" type="application/json">` element left empty.
+  `order_history/page.py` puts the data in (every `<` escaped as `\u003c`) and
+  writes `<data>/index.html` atomically. The data carries a `format` number;
+  `page.py`'s `FORMAT` and `web/src/load.ts`'s `DATA_FORMAT` must change
+  together, and a page whose numbers differ shows a message instead.
+- The shell comes from the cache (`~/.cache/order-history/`), else a local
+  `npm run build` in `web/` (a checkout with npm), else the `page-shell.html`
+  attached to the GitHub release for this version (then cached). With none,
+  the build exits 4 and the old page stays. `release.yml` attaches the shell
+  when a `v*` tag is pushed; the tag must be `v` + `order_history.__version__`.
+- To add a store: write its vendor module, list it in `vendors/__init__.py`,
+  and add a `--store-<id>` color in `web/src/styles.css`.
+- Page checks: `npm --prefix web ci && npm --prefix web run build`, then
+  `npm --prefix web test` (runs `tests/search_cases.json` against
+  `web/src/search.ts`, so the page and `search.py` can't drift).
 - npm dependencies are pinned to exact versions (each one at least two weeks
   old when chosen) with a lockfile.
-- The generated page, `data.json`, `dist/` and `images.json` all contain
-  purchase data and are gitignored. Keep it that way.
+- The built page holds purchase data and lives only in the data folder,
+  outside the checkout. `web/dist/` (the empty shell) is gitignored too.
 
 ## Cross-referencing (join keys)
 
@@ -211,7 +218,9 @@ How it fits together:
   - Product page: `https://www.amazon.com/dp/<ASIN>`
   - Order details: `https://www.amazon.com/gp/your-account/order-details?orderID=<Order ID>`
   - Product image (no auth, three tiers of reliability):
-    1. `search/images.json` — local cache built by `search/fetch_images.py`.
+    1. `images.json` — local cache, built by an image fetcher (it was
+       `fetch_images.py`, removed in M3; returning as `order-history update
+       --amazon-images` in M4).
        `{"src": "i", "id": "<imageId>"}` means
        `https://m.media-amazon.com/images/I/<imageId>._SL160_.jpg` (stable CDN
        URL, any `_SL<px>_` size tag works); `{"src": "p"}` means tier 2 works;
@@ -222,8 +231,8 @@ How it fits together:
        image dimensions/size, not status code.
     3. Scrape `https://www.amazon.com/dp/<ASIN>` with a browser User-Agent and
        extract `"hiRes":"https://m.media-amazon.com/images/I/…"` or
-       `data-old-hires` — this is what `fetch_images.py` automates (rate-limited,
-       captcha-aware, resumable; re-run it any time, then re-run `build.py`).
+       `data-old-hires` — this is what the image fetcher automates (rate-limited,
+       captcha-aware, resumable).
 - **`Photograph ID`** in `Delivery Photos.csv` is the filename (without
   `.jpeg`) under `Media/YourOrders.PhotoOnDelivery/media/`. The CSV has the
   delivery date and GPS coordinates; it does **not** carry an Order ID, so

@@ -83,3 +83,48 @@ Prevention: spell commands out (the Bash tool runs zsh); and check the diff is n
 before planning a review.
 Fix belongs in: skill (review-swarm, step 1: refuse to plan on an empty diff)
 Status: open
+
+## 2026-10-25T14:46-0700 — surprise: Claude in Chrome refuses file:// pages
+Chapter: [M3](notebook/M3.md)
+What happened: the M3 acceptance check opens `<data>/index.html` from disk, but the
+browser tool answered "Can't interact with browser-internal or unparseable URLs" for every
+`file://` URL. The pages were served on 127.0.0.1 with `python3 -m http.server` instead.
+Cost: two failed navigations; the `file://` case itself stays unchecked by the agent.
+Prevention: say in the plan's manual checks that a page meant for `file://` is checked
+over a loopback server when the browser tool can't open files (or turn on the extension's
+"Allow access to file URLs").
+Fix belongs in: tool (Claude in Chrome file URL access) / skill (project-plan manual checks)
+Status: open
+
+## 2026-10-25T14:46-0700 — instruction gap: required-check names in the plan
+Chapter: [M3](notebook/M3.md)
+What happened: the plan said to re-run `harden_repo.sh` with `lint test page`, but `test`
+is a matrix job, which GitHub reports as `test (3.10)` and `test (3.x)`. A bare `test`
+context never reports, so it would have blocked every merge.
+Cost: none (found by reading the script's header before running it); would have cost a
+blocked PR and another settings change.
+Prevention: when a plan names required checks, list them as GitHub reports them
+(`gh run view <id> --json jobs --jq '.jobs[].name'`).
+Fix belongs in: skill (project-plan, or github-repo-hardening's usage note)
+Status: open
+
+## 2026-10-25T14:46-0700 — failed command: a stub executable with PATH narrowed to itself
+Chapter: [M3](notebook/M3.md)
+What happened: a test's fake `npm` script ran with PATH set to its own folder, so its
+`mkdir` and `cp` failed with exit 127.
+Cost: one test-fix round.
+Prevention: stub scripts call tools by absolute path when the test narrows PATH.
+Fix belongs in: project instructions (testing notes)
+Status: open
+
+## 2026-10-25T14:53-0700 — surprise: review tier chosen by words in deleted files
+Chapter: [M3](notebook/M3.md)
+What happened: the review planner chose the full tier because its concurrency and
+secrets/auth triggers matched `ThreadPoolExecutor` and `Authorized` in `search/` files the
+change only deletes. The full tier still found the two medium findings, so no harm here,
+but deleted lines are not risky code.
+Cost: about five extra cheap arms.
+Prevention: have the planner ignore removed lines (or files listed with `D`) when matching
+risk triggers.
+Fix belongs in: skill (review-swarm, `swarm.py plan`)
+Status: open

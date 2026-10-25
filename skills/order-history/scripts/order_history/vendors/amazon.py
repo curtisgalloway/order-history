@@ -21,6 +21,8 @@ from order_history import model, store
 
 ID = "amazon"
 NAME = "Amazon"
+# Shown in the page footer.
+SOURCE = "Order History.csv + Digital Content Orders.csv"
 
 ORDERS_CSV = os.path.join("Your Amazon Orders", "Order History.csv")
 DIGITAL_CSV = os.path.join("Your Amazon Orders", "Digital Content Orders.csv")

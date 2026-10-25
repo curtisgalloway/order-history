@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 Curtis Galloway
+# SPDX-License-Identifier: Apache-2.0
+
+# On a pushed v* tag: build the data-free page shell and attach it to that
+# tag's GitHub release as page-shell.html, which order-history downloads (and
+# caches) when it has no Node. The tag must equal v + the package's
+# __version__, since that is the URL the tool asks for. The repo's tag
+# ruleset stops v* tags from being moved or deleted, but it does not cover
+# release assets: someone with write access could replace page-shell.html.
+# GitHub's immutable releases lock a published release's assets; so that the
+# setting can be turned on, the release is created as a draft, the shell is
+# attached, and only then is it published.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+jobs:
+  shell:
+    # Runs npm's third-party code, so it gets a read-only token.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          # No dependency cache: a release builds from the lockfile alone.
+          node-version: 24
+      - name: Check the tag matches the package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(python3 -c 'import sys; sys.path.insert(0, "skills/order-history/scripts"); import order_history; print(order_history.__version__)')"
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::tag $TAG does not match the package version $version"
+            exit 1
+          fi
+      - run: npm --prefix web ci
+      - run: npm --prefix web run build
+      - run: npm --prefix web test
+      - run: python3 -m unittest discover -s tests -p test_page.py -v
+        env:
+          ORDER_HISTORY_TEST_SHELL: ${{ github.workspace }}/web/dist/index.html
+      - run: cp web/dist/index.html page-shell.html
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: page-shell
+          path: page-shell.html
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    # The only job that can write: it runs no checkout and no npm, just gh.
+    needs: shell
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: page-shell
+      - name: Attach page-shell.html to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          test -s page-shell.html
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --verify-tag --title "$TAG" \
+              --notes "order-history $TAG. page-shell.html is the search page with no data in it; order-history fills it in."
+          fi
+          # A re-run after a failed publish finds the shell already attached:
+          # it is never replaced (no --clobber), only published.
+          if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx page-shell.html; then
+            gh release upload "$TAG" page-shell.html
+          fi
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true ]; then
+            gh release edit "$TAG" --draft=false
+          fi

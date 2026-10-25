@@ -1,7 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Curtis Galloway
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared test setup: the package on sys.path, fixtures, an isolated home."""
+"""Shared test setup: the package on sys.path, fixtures, an isolated home.
+
+Every IsolatedTestCase also gets a tiny page shell in its isolated cache, and
+page.py's local build and download are switched off, so no test runs npm or
+touches the network unless it passes its own hooks.
+"""
 
 import contextlib
 import io
@@ -24,9 +29,24 @@ REAL_HOME = os.path.expanduser("~")
 if SCRIPTS not in sys.path:
     sys.path.insert(0, SCRIPTS)
 
+# pylint: disable=wrong-import-position
+from order_history import __version__, page
+
+# A minimal page shell: the empty order-data element and nothing else.
+TINY_SHELL = (
+    "<!DOCTYPE html><html><body><div id=root></div>"
+    + page.PLACEHOLDER
+    + "</body></html>"
+)
+
+
+def no_fetch(url):
+    """A download stub that fails as offline does."""
+    raise OSError(f"test: no network ({url})")
+
 
 class IsolatedTestCase(unittest.TestCase):
-    """Runs each test with HOME, XDG_CONFIG_HOME and ORDER_HISTORY_DIR isolated."""
+    """Runs each test with HOME, XDG_* and ORDER_HISTORY_DIR isolated."""
 
     def setUp(self):
         super().setUp()
@@ -40,7 +60,23 @@ class IsolatedTestCase(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         os.environ.pop("XDG_CONFIG_HOME", None)
+        os.environ.pop("XDG_CACHE_HOME", None)
         os.environ.pop("ORDER_HISTORY_DIR", None)
+        # No real npm build and no network by default.
+        for name, value in (
+            ("WEB_DIR", os.path.join(self.tmp, "no-web")),
+            ("download", no_fetch),
+        ):
+            patcher = mock.patch.object(page, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.shell_cache = page.cache_dir()
+        os.makedirs(self.shell_cache)
+        self.cached_shell = os.path.join(
+            self.shell_cache, page.SHELL_NAME.format(version=__version__)
+        )
+        with open(self.cached_shell, "w", encoding="utf-8") as f:
+            f.write(TINY_SHELL)
 
     def data_dir(self, vendors=("amazon", "adafruit")):
         """A copy of the fixture data folder holding only `vendors`."""
@@ -52,14 +88,14 @@ class IsolatedTestCase(unittest.TestCase):
             )
         return path
 
-    def run_cli(self, *argv, registry=None):
+    def run_cli(self, *argv, registry=None, page_hooks=None):
         """(exit code, stdout, stderr) of cli.main(argv)."""
         from order_history import cli  # pylint: disable=import-outside-toplevel
 
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             try:
-                code = cli.main(list(argv), registry=registry)
+                code = cli.main(list(argv), registry=registry, page_hooks=page_hooks)
             except SystemExit as e:  # argparse usage errors and --version
                 code = e.code
         return code, out.getvalue(), err.getvalue()

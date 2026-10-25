@@ -5,10 +5,10 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
 
-// One self-contained dist/index.html: JS, CSS and the order data are all
-// inlined so it opens straight from disk with no server. build.py copies it
-// to search/index.html.
+// One self-contained dist/index.html with the JS and CSS inlined, so it opens
+// straight from disk with no server. It is the page shell: its
+// <script id="order-data"> element is empty, and order-history's page.py
+// fills it with the order data. Releases publish it as page-shell.html.
 export default defineConfig({
   plugins: [react(), viteSingleFile()],
-  json: { stringify: true },
 });

@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Curtis Galloway
 # SPDX-License-Identifier: Apache-2.0
 
-# Builds the page from a clean checkout (no exports, so the data is empty),
-# lints the Python and runs the unit tests. build and lint are required checks
-# on main; test becomes one in M3.
+# Lints the Python, runs the unit tests, and builds and tests the page shell
+# from a clean checkout (no exports, so no purchase data is involved). lint,
+# test and page are the required checks on main.
 name: CI
 
 on:
@@ -15,30 +15,41 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  page:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: search/app/package-lock.json
-      # Type-checks (tsc) and builds (Vite), then writes search/index.html.
-      - run: python3 search/build.py
-      - run: test -s search/index.html
+          cache-dependency-path: web/package-lock.json
+      - run: npm --prefix web ci
+      # Type-checks (tsc) and builds (Vite) the page shell: web/dist/index.html.
+      - run: npm --prefix web run build
+      - run: test -s web/dist/index.html
+      # search.ts against tests/search_cases.json, and the page's data check.
+      - run: npm --prefix web test
+      # Order data holding </script> can't break out of the built shell.
+      - run: python3 -m unittest discover -s tests -p test_page.py -v
+        env:
+          ORDER_HISTORY_TEST_SHELL: ${{ github.workspace }}/web/dist/index.html
 
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Google's pylintrc at a fixed commit, with the 88-column line length
       # that pyink formats to.
       - run: |
           curl -fsSL -o .pylintrc https://raw.githubusercontent.com/google/styleguide/5b8bc6b9477c0a96aea4dfebe8f91c0c2cbac67e/pylintrc
           sed -i 's/^max-line-length=80/max-line-length=88/' .pylintrc
       - run: >-
-          pipx run pylint==4.1.3 search/*.py
+          pipx run pylint==4.1.3
           skills/order-history/scripts/order_history
           skills/order-history/scripts/order-history tests
 
@@ -50,6 +61,8 @@ jobs:
         python-version: ["3.10", "3.x"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}

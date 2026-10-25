@@ -21,11 +21,17 @@ order history. Each store's export has its own columns and quirks.
 **Item** — one product line in an order (Amazon writes one CSV row per item).
 Adafruit's export has no items, only order totals.
 
-**Loader** — a function in `search/build.py` that reads one store's export and
-returns orders in the shared shape the page understands.
+**Loader** — the part of a store's vendor module
+(`order_history/vendors/<store>.py`) that reads that store's export and returns
+orders in the shared shape the page understands.
 
 **Order view / Items view** — the two ways the page lists results: one card
 per order with its items inside, or one row per item.
+
+**Page shell** — the search page built with no data in it: its
+`<script id="order-data">` element is empty. The tool fills that element with
+your orders to make `index.html`. Each release publishes it as
+`page-shell.html`, so building the page needs no Node.
 
 **Single-file build** — the page is built so its JavaScript, styles and data
 are all inside one `index.html`, which therefore opens from disk with no web
@@ -35,4 +41,4 @@ server (done by `vite-plugin-singlefile`).
 and swaps them as you scroll, so thousands of results scroll smoothly.
 
 **Vite** — the build tool that turns the TypeScript/React source in
-`search/app/` into the finished page.
+`web/` into the page shell.
