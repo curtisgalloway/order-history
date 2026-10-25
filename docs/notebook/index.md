@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Notebook index
 
-Updated: 2026-10-25T15:44-0700
+Updated: 2026-10-25T16:04-0700
 
 A row is stale when its chapter has an entry newer than "indexed through".
 
@@ -59,10 +59,19 @@ Outcome: complete; SKILL.md + vendor docs, `--skill`/`skill`, plugin and marketp
 - `pyproject.toml` retargeted pyink (parenthesized `with` in two untouched files).
 - Review: 4 findings, all fixed (skill --json, exit-4 note, NOTES.md, a lost `\u003c`).
 
+### [M6 — Migration, final verification and first release](M6.md)
+Entries: 2026-10-25T15:49-0700 through 2026-10-25T16:04-0700
+Outcome: open; data migrated with matching counts, cold start passed, version 0.1.0, review fixed; release and deletion gated on the user
+- SKILL.md's migration order would have overwritten the counts in NOTES.md; reordered, with a counting command for the old build's data.json.
+- Cold start found five skill gaps (substring noise, `status` shape, undocumented fields, returns, PATH fallback); all fixed.
+- Browser tool still refuses `file://`; loopback check plus a manual open.
+- Review F4: a real export date slipped into the notebook; the privacy grep had no date patterns.
+
 ## Threads
 - **Privacy of tracked files:** [design](design.md), [M4](M4.md) — the draft quoted account
   counts and had to be scrubbed; M4's privacy note first listed the private grep patterns.
-  Keep examples generic, describe checks by category.
+  Keep examples generic, describe checks by category. [M6](M6.md): a real export date slipped
+  past a pattern grep with no date patterns; the conventions arm caught it.
 - **Python 3.10 support:** [M1](M1.md), [M2](M2.md), [M4](M4.md) — `build.py` needs 3.12; the
   new package and its lint rules keep to 3.10 syntax (f-string quote rule hit again in M2
   and M4).

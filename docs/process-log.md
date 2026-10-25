@@ -185,3 +185,49 @@ Prevention: after writing a file whose text must hold a literal `\uXXXX` (or oth
 grep the file for it; or write such lines with a script that spells the backslash out.
 Fix belongs in: tool (the harness's handling of `\u` sequences in tool input) / user instructions (the "non-printing characters" rule could mention it)
 Status: open
+
+## 2026-10-25T15:59-0700 — surprise: Claude in Chrome refuses file:// pages (again)
+Chapter: [M6](notebook/M6.md)
+What happened: M6's criterion "the page opens from `<data>/index.html`" met the same
+refusal as M3; the M3 entry is still open. Checked over a loopback server again, and the
+`file://` open went to the user as a manual check.
+Cost: one failed navigation; the criterion needs a human step.
+Prevention: the same as the M3 entry. The plan should have written the criterion as
+"over loopback, plus one manual `file://` open" from the start, since M3 already knew.
+Fix belongs in: tool (Claude in Chrome file URL access) / skill (project-plan: carry known
+tool limits from earlier milestones into later criteria)
+Status: open
+
+## 2026-10-25T15:59-0700 — failed command: BSD `head -c 0`
+Chapter: [M6](notebook/M6.md)
+What happened: a no-op `head -c 0 /dev/null` at the end of a privacy breakdown failed
+("illegal byte count -- 0") and turned the whole call's exit status to 1. The useful output
+had printed, so nothing was lost.
+Cost: a confusing error on a command that had worked.
+Prevention: don't append filler commands; on macOS, `head -c` needs a positive count.
+Fix belongs in: user instructions ("On macOS: BSD userland flags")
+Status: open
+
+## 2026-10-25T15:59-0700 — instruction gap: the migration steps' order clobbered the notes
+Chapter: [M6](notebook/M6.md)
+What happened: SKILL.md said to "note" the counts in step 1 and `cp LOCAL.md NOTES.md` in
+step 5. The plan said to record the counts in `NOTES.md` before migrating. Followed
+literally, step 5 overwrites the counts. Caught before running step 5, by reading ahead.
+Cost: none in data; the skill needed a rewrite of four steps.
+Prevention: when a skill step writes a file, check what earlier steps put there. The skill
+itself is now fixed (project change, recorded in the M6 evidence).
+Fix belongs in: skill (order-history SKILL.md, fixed in M6)
+Status: fixed in skills/order-history/SKILL.md (M6)
+
+## 2026-10-25T16:05-0700 — instruction not followed: a real export date in the notebook
+Chapter: [M6](notebook/M6.md)
+What happened: a notebook entry named the real archived export's folder, date included.
+The privacy grep built patterns for order IDs, product names, addresses, emails, paths and
+counts, but none for dates, though AGENTS.md lists "counts or dates that describe one
+account". The review's conventions arm caught it before the commit.
+Cost: one review finding and an in-place fix to an append-only chapter.
+Prevention: build the privacy patterns from AGENTS.md's list item by item, dates included
+(the export's `as_of` dates, retrieval dates, archive folder names); and write
+placeholders (`<date>`) while drafting rather than scrubbing later.
+Fix belongs in: project instructions (AGENTS.md "Before committing": name the date sources)
+Status: open

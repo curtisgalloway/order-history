@@ -59,7 +59,7 @@ counts (AGENTS.md, "Before committing").
 | M3 | Node-free page; `search/` removed; CI and release workflow | M2 | complete |
 | M4 | `update`: Adafruit items, opt-in Amazon images | M3 | complete |
 | M5 | Skill, vendor docs, `--skill`, plugin manifest, packaging, docs | M4 | complete |
-| M6 | Migrate real data, final verification, first release | M5 | pending |
+| M6 | Migrate real data, final verification, first release | M5 | in_progress |
 
 ## Design coverage
 
@@ -251,7 +251,21 @@ Open limitations:
 
 ### Evidence and findings
 
-Status: pending. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
+Status: in_progress. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
+
+Done (2026-10-25): the real data migrated by the skill's steps, `status` counts equal to the
+last in-checkout build's (kept in `<data>/NOTES.md`), the page checked over loopback, the
+cold-start check passed, the version is `0.1.0`, the privacy grep of the tree and history
+is clean, and every leftover path has a checksum-verified copy. SKILL.md was corrected where
+the migration and the cold start showed it wrong (see the evidence file).
+
+Remaining, each with the user's go-ahead:
+
+- tag `v0.1.0` on the merged `main`, push the tag, and confirm the release has
+  `page-shell.html`;
+- clear the shell cache, rebuild with no Node, and compare that page with a local build;
+- delete the leftover folders from the old checkout;
+- open `<data>/index.html` from disk once by hand (the browser tool refuses `file://`).
 
 ## Discovered work / backlog
 
@@ -289,27 +303,28 @@ Status: pending. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
   `web/`, or an opt-in variable, for the local build. Found in M5.
 - `claude plugin validate` reports `ICON_MISSING` (non-blocking); add a 512–2048 px PNG
   only if the plugin is submitted to Anthropic's directory. Found in M5.
+- `search`'s substring rule makes short terms match inside unrelated words (`air` in
+  "pairs"); the skill now says to read every result. If agents keep tripping on it, add a
+  whole-word option or rank results. Found in M6's cold start.
+- Importing a newer real export (the final-verification check that its comparison report
+  is sensible) waits for the next Amazon or Adafruit export. Found in M6.
 - Phase 2: a download flow for each vendor, and `add --provisional` from order
   pages. Not planned yet.
 
 ## Next session
 
-- **Current milestone:** M5 complete (checkpoint commit `plan: M5 — Skill, plugin, packaging
-  and docs` on branch `m5-skill`). M6 is next.
-- **Completed work:** M1–M4 merged (PRs #3–#6). M5 is committed locally on `m5-skill`;
-  pushing, the pull request and merging are the orchestrator's (with the user's go-ahead).
-  Required checks on `main` are `lint`, `page`, `test (3.10)` and `test (3.x)`.
-- **Uncommitted state:** none for the milestone. `.no-pitch` stays untracked.
-- **Decisions pending:** whether the repo-as-its-own-marketplace (`marketplace.json`) stays
-  (recommended: keep; it is what makes the README's plugin install line work).
-- **Context boundary:** normal completion.
-- **Resume action:** after M5 merges, create `m6-migrate` from an up-to-date `origin/main`
-  and begin M6: record the counts in the data folder's `NOTES.md`, follow SKILL.md's
-  "Migrating from an in-checkout layout" on the main checkout's data, bump `__version__`
-  and `plugin.json` to `0.1.0` before the tag, and only with the user's go-ahead tag and
-  delete the old folders.
-- **Read first:**
-  - [design](design.md), R10 and R9;
-  - this plan's M6 section and the backlog's M6 items (gather the Amazon folders first);
-  - [notebook index](notebook/index.md);
-  - `skills/order-history/SKILL.md` (the migration steps M6 follows and tests).
+- **Current milestone:** M6 `in_progress` (checkpoint commit `plan: M6 — Migration, final
+  verification and first release` on branch `m6-migrate`). Only the release criteria remain.
+- **Completed work:** M1–M5 merged (PRs #3–#7). M6's migration, version bump, checks,
+  cold start, privacy grep, deletion check and review are done (evidence file).
+- **Uncommitted state:** none for the milestone. `.no-pitch` stays untracked. The data
+  folder (outside the repo) holds the migrated data and `NOTES.md`.
+- **Decisions pending (the user's):** go-ahead to tag `v0.1.0` and push the tag; go-ahead to
+  delete the leftover folders in the old checkout. The exact commands are in the M6 hand-off.
+- **Context boundary:** normal checkpoint.
+- **Resume action:** after this branch merges, tag `v0.1.0` on the merged `main` commit and
+  push the tag; check the release has `page-shell.html`; clear the shell cache, rebuild with
+  no Node on `PATH`, compare with a local build, and record the result in
+  [M6 evidence](evidence/M6.md) "Release"; with the go-ahead, delete the leftover folders;
+  then close M6 (move its definition into the evidence file, mark it complete).
+- **Read first:** [M6 evidence](evidence/M6.md), [M6 notebook](notebook/M6.md).

@@ -144,8 +144,12 @@ class SkillDocumentsTest(unittest.TestCase):
             os.path.join(support.REPO, "AGENTS.md"),
             os.path.join(support.REPO, "GLOSSARY.md"),
         ]
+        # The migration steps may name the old build's data file, which an old
+        # checkout still holds; nothing else under search/app is a live path.
         removed = re.compile(
-            r"search/(build|fetch_\w+)\.py|search/app|npm --prefix search"
+            r"search/(build|fetch_\w+)\.py"
+            r"|search/app(?!/src/generated/data\.json)"
+            r"|npm --prefix search"
         )
         for path in paths:
             with self.subTest(path=path):
