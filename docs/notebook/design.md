@@ -50,3 +50,9 @@ gains a `format` number so a mismatched shell fails clearly.
 ## 2026-10-25T13:27-0700 — decision: design approved
 The user approved the rest of the design ("otherwise approved"). Design gate satisfied
 at this revision; next is deriving the implementation plan.
+
+## 2026-10-25T13:29-0700 — checkpoint (closing)
+State: complete. The design is approved and `docs/implementation-plan.md` defines M1–M6
+(package and read-only commands → import → Node-free page → update → skill and plugin →
+migration and release). Next: with the user's go-ahead, push `design` and merge it, then
+start M1 on `m1-package`.
