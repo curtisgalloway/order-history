@@ -59,7 +59,7 @@ counts (AGENTS.md, "Before committing").
 | M3 | Node-free page; `search/` removed; CI and release workflow | M2 | complete |
 | M4 | `update`: Adafruit items, opt-in Amazon images | M3 | complete |
 | M5 | Skill, vendor docs, `--skill`, plugin manifest, packaging, docs | M4 | complete |
-| M6 | Migrate real data, final verification, first release | M5 | in_progress |
+| M6 | Migrate real data, final verification, first release | M5 | complete |
 
 ## Design coverage
 
@@ -208,64 +208,25 @@ Open limitations:
 
 ## M6 — Migration, final verification and first release
 
-**Design coverage:** R10, R9, and a full-design check
+**Outcome:** the real in-checkout data migrated into the data folder by SKILL.md's own steps,
+with `status` counts equal to the last in-checkout build's (kept in `<data>/NOTES.md`);
+SKILL.md corrected where migrating and a cold-start check showed it wrong; version `0.1.0`;
+release `v0.1.0` published (immutable, with `page-shell.html`), whose shell is byte-identical
+to a local build; the old checkout's exports, caches and page deleted after a SHA-256 check;
+the page checked from `file://` by the user; R1–R10 checked against evidence.
 
-**Dependencies:** M5
-
-**In scope:**
-
-- migrate this checkout's real data with the skill's documented steps;
-- run the final system checks;
-- tag `v0.1.0` (with the user's go-ahead) so the release has a page shell.
-
-### Implementation steps
-
-1. Before migrating, record each vendor's order and item counts from the
-   current build in the data folder's `NOTES.md`, never in tracked files.
-2. `init`. Then import the Amazon export folder and the Adafruit CSV, and
-   move the caches, `archive/` and `LOCAL.md` (as `NOTES.md`) by the skill's
-   steps.
-3. Run the final system checks below.
-4. With the user's go-ahead: tag `v0.1.0`, push the tag, and confirm the
-   release has `page-shell.html`. Then clear the shell cache and rebuild with
-   no Node, so the shell comes from the release download.
-
-### Acceptance criteria
-
-- [ ] `status` counts match the counts recorded before migration.
-- [ ] The page opens from `<data>/index.html`, and a search for a known
-  purchase finds it.
-- [ ] The checkout no longer holds any export, cache or page. The leftover
-  folders are deleted only with the user's go-ahead.
-- [ ] A shell downloaded from the release builds the same page as a local build.
-- [ ] A privacy grep of the whole repo is clean.
-
-### Final system verification
-
-- Importing a newer real export later (whenever one arrives) produces a
-  sensible comparison report. This is recorded as a follow-up if no export
-  is available yet.
-- A cold-start check: a fresh agent session given only the skill finds a
-  purchase and reports its date. Recorded in the evidence file.
-- Every requirement R1–R10 is checked against its evidence in M1–M6.
+**Design coverage:** R10, R9, and the full-design check. **Dependencies:** M5.
 
 ### Evidence and findings
 
-Status: in_progress. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
+Status: complete. Evidence: [M6](evidence/M6.md) (full milestone definition, checks, review,
+release and close-out self-check). Notebook: [M6](notebook/M6.md).
 
-Done (2026-10-25): the real data migrated by the skill's steps, `status` counts equal to the
-last in-checkout build's (kept in `<data>/NOTES.md`), the page checked over loopback, the
-cold-start check passed, the version is `0.1.0`, the privacy grep of the tree and history
-is clean, and every leftover path has a checksum-verified copy. SKILL.md was corrected where
-the migration and the cold start showed it wrong (see the evidence file).
+Open limitations:
 
-Remaining, each with the user's go-ahead:
-
-- tag `v0.1.0` on the merged `main`, push the tag, and confirm the release has
-  `page-shell.html`;
-- clear the shell cache, rebuild with no Node, and compare that page with a local build;
-- delete the leftover folders from the old checkout;
-- open `<data>/index.html` from disk once by hand (the browser tool refuses `file://`).
+- The "newer real export gives a sensible comparison report" check waits for the next
+  export (backlog).
+- The browser tool can't open `file://`; the page's from-disk check was the user's.
 
 ## Discovered work / backlog
 
@@ -313,18 +274,16 @@ Remaining, each with the user's go-ahead:
 
 ## Next session
 
-- **Current milestone:** M6 `in_progress` (checkpoint commit `plan: M6 — Migration, final
-  verification and first release` on branch `m6-migrate`). Only the release criteria remain.
-- **Completed work:** M1–M5 merged (PRs #3–#7). M6's migration, version bump, checks,
-  cold start, privacy grep, deletion check and review are done (evidence file).
-- **Uncommitted state:** none for the milestone. `.no-pitch` stays untracked. The data
-  folder (outside the repo) holds the migrated data and `NOTES.md`.
-- **Decisions pending (the user's):** go-ahead to tag `v0.1.0` and push the tag; go-ahead to
-  delete the leftover folders in the old checkout. The exact commands are in the M6 hand-off.
-- **Context boundary:** normal checkpoint.
-- **Resume action:** after this branch merges, tag `v0.1.0` on the merged `main` commit and
-  push the tag; check the release has `page-shell.html`; clear the shell cache, rebuild with
-  no Node on `PATH`, compare with a local build, and record the result in
-  [M6 evidence](evidence/M6.md) "Release"; with the go-ahead, delete the leftover folders;
-  then close M6 (move its definition into the evidence file, mark it complete).
-- **Read first:** [M6 evidence](evidence/M6.md), [M6 notebook](notebook/M6.md).
+- **Current milestone:** none. M1–M6 are complete; the plan's phase 1 is delivered.
+- **Completed work:** M1–M6 merged (PRs #3–#8). `v0.1.0` is tagged on `3b5895e` and released
+  with `page-shell.html`. The M6 close-out records are on branch `m6-close` (checkpoint
+  commit `plan: M6 — close: release v0.1.0 verified, checkout cleaned`), for a pull request.
+- **Uncommitted state:** none. `.no-pitch` stays untracked. The user's data lives in the
+  data folder, outside the repository.
+- **Decisions pending:** none required. Optional: whether to pursue any backlog item above,
+  or start designing phase 2.
+- **Context boundary:** normal completion.
+- **Resume action:** no milestone is pending. Next work is chosen from the backlog (for
+  example, import the next real export and check its comparison report) or a phase 2 design
+  revision, which goes through the design gate first.
+- **Read first:** [design](design.md), the backlog above, [notebook index](notebook/index.md).

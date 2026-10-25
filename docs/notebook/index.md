@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Notebook index
 
-Updated: 2026-10-25T16:04-0700
+Updated: 2026-10-25T16:21-0700
 
 A row is stale when its chapter has an entry newer than "indexed through".
 
@@ -60,11 +60,11 @@ Outcome: complete; SKILL.md + vendor docs, `--skill`/`skill`, plugin and marketp
 - Review: 4 findings, all fixed (skill --json, exit-4 note, NOTES.md, a lost `\u003c`).
 
 ### [M6 — Migration, final verification and first release](M6.md)
-Entries: 2026-10-25T15:49-0700 through 2026-10-25T16:04-0700
-Outcome: open; data migrated with matching counts, cold start passed, version 0.1.0, review fixed; release and deletion gated on the user
+Entries: 2026-10-25T15:49-0700 through 2026-10-25T16:21-0700
+Outcome: complete; data migrated with matching counts, `v0.1.0` released (shell byte-identical to a local build), checkout cleaned
 - SKILL.md's migration order would have overwritten the counts in NOTES.md; reordered, with a counting command for the old build's data.json.
 - Cold start found five skill gaps (substring noise, `status` shape, undocumented fields, returns, PATH fallback); all fixed.
-- Browser tool still refuses `file://`; loopback check plus a manual open.
+- Browser tool still refuses `file://`; loopback check, then the user opened it from disk.
 - Review F4: a real export date slipped into the notebook; the privacy grep had no date patterns.
 
 ## Threads
