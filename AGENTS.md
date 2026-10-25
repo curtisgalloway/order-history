@@ -3,262 +3,140 @@ SPDX-FileCopyrightText: 2026 Curtis Galloway
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Order history search
+# Order history: developer guide
 
-Tools for searching your own order history, built from the data exports that
-stores let you download. Amazon's "Request My Data" export and Adafruit's
-order-history CSV are supported. The exports themselves are never committed;
-they sit in this checkout, ignored by git (see `.gitignore`).
+This repository is `order-history`, a command-line tool and agent skill for searching
+your own order history from the exports stores let you download (Amazon's "Request My
+Data" zip, Adafruit's order-history CSV). This file is for working **on the code**.
 
-**If `LOCAL.md` exists, read it first.** It is gitignored and records facts
-about the exports in this particular checkout (whose account, retrieval
-dates, row counts). Keep personal facts there, never in tracked files: this
-repo is meant to be publishable.
+**To use the tool** (import an export, answer "when did I buy…", run `update`), follow
+the skill instead: [`skills/order-history/SKILL.md`](skills/order-history/SKILL.md),
+and for one store's export format and quirks,
+[`skills/order-history/vendors/<store>.md`](skills/order-history/vendors/). Those files
+are also what `order-history --skill` and `order-history skill <store>` print.
 
-Terms used below (full list in `GLOSSARY.md`): **DSAR** is Amazon's "Request
-My Data" export; **ASIN** is Amazon's product ID.
+**Terms** (full list in [GLOSSARY.md](GLOSSARY.md)):
 
-## Directory structure
+- **Export**: the file a store lets you download with your own orders.
+- **Vendor module**: one store's code (`order_history/vendors/<id>.py`) plus its
+  instruction file (`skills/order-history/vendors/<id>.md`).
+- **Data folder**: where exports, caches and the built page live, outside the repository
+  (`~/Documents/Order History` by default).
+- **Page shell**: the search page built with no data in it; releases publish it.
+- **Skill / plugin**: the agent instructions (`SKILL.md`) and Claude Code's install unit
+  wrapping them (`.claude-plugin/`).
 
-Paths are relative to the repo root. The export folders are created by
-unzipping the downloads here; they are not in git.
+The design is [docs/design.md](docs/design.md) and the milestone plan
+[docs/implementation-plan.md](docs/implementation-plan.md).
+
+## Purchase data never enters the repository
+
+This repo is public. No export, cache, built page or fact about one account belongs in a
+tracked file. Personal notes about the exports go in the data folder's `NOTES.md`; a
+clone from before the data folder may still have a gitignored `LOCAL.md` (read it first
+if it exists, and see SKILL.md's migration section). Tests use invented fixtures only
+(`tests/fixtures/`), with made-up order IDs like `111-1234567-1234567` and addresses at
+`example.com`.
+
+**Before every commit,** check the staged diff for personal data: email addresses,
+home-directory paths, real order IDs, product names from the exports, addresses, and
+counts or dates that describe one account. Use made-up examples instead.
+
+## Layout
 
 ```
 ./
-├── AGENTS.md, README.md, GLOSSARY.md, LICENSE
-├── LOCAL.md                         ← (gitignored) facts about these exports
-├── archive/                         ← (gitignored) earlier exports, replaced by newer ones
-├── skills/order-history/scripts/
-│   ├── order-history                ← the command-line tool (init, import, search, build, …)
-│   └── order_history/               ← its package: vendors/, store.py, page.py, …
-├── web/                             ← Vite + React + TypeScript source of the page shell
-├── tests/                           ← unit tests, invented fixtures only
-├── Adafruit/
-│   ├── order_history.csv            ← Adafruit account export (order-level only)
-│   ├── items.json                   ← item lines per order, from `order-history update`
-│   └── lookup_email.txt             ← account email for the order-status lookup
-├── Your Amazon Orders/
-│   ├── Order History.csv            ← ★ the main file: all physical orders
-│   ├── Digital Content Orders.csv   ← Kindle books, apps, digital purchases
-│   ├── Digital Borrowed Items.csv   ← Kindle/Prime lending-library loans
-│   ├── Digital Returns.csv          ← refunds on digital purchases
-│   ├── Cart History.csv             ← items added to cart (not necessarily bought)
-│   ├── Delivery Photos.csv          ← index of driver photo-on-delivery shots
-│   └── Media/YourOrders.PhotoOnDelivery/media/
-│       └── <Photograph ID>.jpeg     ← delivery photos, named by UUID
-├── Your Returns & Refunds/
-│   ├── Returns Status.csv           ← return contracts: reason, resolution, amounts
-│   ├── Refund Details.csv           ← refund payments: amount, date, status
-│   ├── Replacement Orders.csv       ← maps original Order ID → Replacement Order ID
-│   └── Return Requests.csv          ← return requests with reason codes
-└── Additional Data/
-    ├── Retail.TransactionalInvoicing.*/   ← invoice PDFs
-    ├── Your Orders.Returns.1/             ← refund records + README.txt field glossary
-    ├── YourOrders.CustomerReviews.1.1/    ← product reviews you wrote
-    └── Sustainability.Value.Metrics.1/    ← single-row sustainability metrics
+├── AGENTS.md, README.md, GLOSSARY.md, LICENSE, pyproject.toml
+├── .claude-plugin/
+│   ├── plugin.json              ← the Claude Code plugin manifest (this repo is the plugin)
+│   └── marketplace.json         ← lists this repo as its own plugin source
+├── skills/order-history/        ← the skill folder: what a plugin or agent loads
+│   ├── SKILL.md                 ← agent instructions (printed by --skill)
+│   ├── vendors/amazon.md, adafruit.md   ← per-store instructions
+│   └── scripts/
+│       ├── order-history        ← entry script (runs the package beside it)
+│       └── order_history/
+│           ├── cli.py           ← subcommands, exit codes, --json, --skill
+│           ├── config.py        ← data-folder resolution
+│           ├── model.py         ← the normalized order and item shape
+│           ├── store.py         ← import: stage, compare, archive, swap, locks
+│           ├── search.py        ← matching rules shared with the page
+│           ├── page.py          ← get a page shell; shell + data → index.html
+│           ├── fetching.py      ← what update's lookups share (injected network)
+│           ├── agent_skill.md   ← symbolic link to ../../SKILL.md
+│           └── vendors/
+│               ├── __init__.py  ← VENDORS, the registry
+│               ├── amazon.py, adafruit.py
+│               └── amazon.md, adafruit.md   ← symbolic links to ../../../vendors/
+├── web/                         ← Vite + React + TypeScript source of the page shell
+├── tests/                       ← unittest, invented fixtures only
+├── docs/                        ← design, plan, evidence, lab notebook, process log
+└── .github/workflows/           ← ci.yml (lint, test, page), release.yml
 ```
 
-## Amazon: `Your Amazon Orders/Order History.csv`
+The package is standard library only and supports Python 3.10 and later.
 
-- One row per item-shipment: an order with 3 items has 3 rows.
-- Key columns: `Order Date` (ISO 8601 UTC), `Order ID`
-  (e.g. `111-1234567-1234567`), `Product Name`, `ASIN`, `Order Status`,
-  `Original Quantity`, `Unit Price`, `Total Amount`, `Currency`,
-  `Shipping Address`, `Carrier Name & Tracking Number`, `Ship Date`,
-  `Payment Method Type`, `Website`, and (exports from late 2026 on)
-  `Department`, the product category; the Amazon vendor module reads it
-  when present.
-- `Website` holds the marketplace (`Amazon.com`, `Amazon.co.uk`, …) and
-  sometimes internal codes. Check `Currency` before assuming USD.
-- `Order Status` values (payment lifecycle, **order-level** — a row whose item
-  already shipped can still show `Authorized` if a sibling item hasn't):
-  - `Closed` — fully shipped and charged; terminal state (the vast majority)
-  - `Authorized` — card hold placed but not fully captured; order still
-    in flight when the export was taken
-  - `Cancelled` — cancelled before fulfillment, never charged
-  - (`Digital Content Orders.csv` uses `SUCCESS` instead of `Closed`)
-  - The search UI hides the default states (`Closed`/`SUCCESS`) and renders
-    `Authorized` as an "In progress" stamp.
+## How the parts fit
 
-`Digital Content Orders.csv` has its own much wider schema; the useful columns
-are `Order Date`, `Order ID`, `Product Name`, `ASIN`, `Price`,
-`Price Currency Code`, `Marketplace`.
+- **Vendor modules.** Each store is a module with `ID`, `NAME`, `detect`, `install`,
+  `as_of`, `read`, `load`, and optionally `compare`, `gaps` and `enrich`; the contract is
+  the docstring of `vendors/__init__.py`. Each returns orders in one shape
+  (`model.new_order()`). A store with no imported export is skipped.
+- **Adding a store:** write `vendors/<id>.py` and `skills/order-history/vendors/<id>.md`,
+  add the symbolic link `order_history/vendors/<id>.md -> ../../../vendors/<id>.md`, list
+  the module in `vendors/__init__.py`, and give it a badge color (`--store-<id>`) in
+  `web/src/styles.css`. `tests/test_skill.py` fails until the instruction file and the
+  link exist.
+- **The page.** `web/` builds the page shell, the page with its
+  `<script id="order-data" type="application/json">` element left empty. `page.py`
+  fills it (every `<` escaped as `\u003c`) and writes `<data>/index.html` atomically.
+  The data carries a `format` number: `page.py`'s `FORMAT` and `web/src/load.ts`'s
+  `DATA_FORMAT` change together, and a page whose numbers differ shows a message.
+- **Where the shell comes from:** the cache (`~/.cache/order-history/`), else a local
+  `npm run build` in `web/` (a checkout with npm), else the `page-shell.html` attached to
+  the GitHub release for this version (then cached). With none, building exits 4 and the
+  old page stays.
+- **The skill documents inside the package.** `--skill` reads `agent_skill.md` and
+  `vendors/<id>.md` through `importlib.resources`, so an installed tool prints its own
+  version's text. In the source tree they are symbolic links to the skill folder, which
+  a wheel stores as plain files (`[tool.setuptools.package-data]` in `pyproject.toml`).
+  The link is not named `SKILL.md` so that no agent scanning for skills finds a second
+  copy. Edit `skills/order-history/SKILL.md` and the vendor `.md` files, never the links.
+- **update's politeness.** The Adafruit lookups read robots.txt with their own
+  User-Agent, wait at least 10 s plus jitter between requests (longer for a
+  `Crawl-delay`), never refetch a cached order, and stop at the first 429/5xx; Amazon
+  image scraping runs only with `--amazon-images`. Keep it that way:
+  `tests/test_update.py` checks each rule with the network, clock and jitter stubbed. No
+  test or manual run sends a real request to either store; `support.IsolatedTestCase`
+  fails any test whose network call isn't stubbed.
 
-## Adafruit: `Adafruit/order_history.csv`
+## Checks
 
-From adafruit.com's account order-history download. **One row per order, no
-item lines**: totals (`subtotal`, `shipping`, `tax`, `coupon`,
-`gift_certificate`, `total`, `refund`), shipping method, and delivery/billing
-addresses.
-
-- The export writes `-` as a space: an order ID comes out as
-  `1234567 1234567890` and a date as `2024 01 31 12:00:00`. The Adafruit
-  vendor module puts the hyphens back (`1234567-1234567890`, `2024-01-31`), which matches how
-  adafruit.com's order-status page shows them. Times are store-local, not
-  UTC (the page shows `12:00:00` as "12:00 PM").
-- `shipping_method` holds HTML (sometimes truncated) with `=` also mangled to
-  spaces; the vendor module strips the tags.
-- Item lists are not in the CSV. `order-history update` gets them
-  (`enrich()` in `order_history/vendors/adafruit.py`) from Adafruit's guest
-  "Order Status" form (on the account sign-in page),
-  which shows an order's items given the account email and full order
-  number, with no login: a POST of `email` and `order_number` to
-  `https://www.adafruit.com/index.php?main_page=account_history_info`. Each
-  item line on that page is a `div.row.confirm-cart.mobile-text-wrapper`
-  holding the product link, `PID: <n>`, image, unit price, quantity and line
-  total. Results are cached in `items.json`; the vendor module merges them,
-  and orders not yet fetched show "item list not in export".
-- The lookup is deliberately polite: it reads robots.txt with its own
-  User-Agent (Adafruit answers Python's default one with 403, which Python's
-  `RobotFileParser.read()` turns into "disallow everything") and stops if
-  the page is disallowed or robots.txt can't be read; it sends one request
-  at a time, at least 10 s apart plus jitter (longer if robots.txt sets a
-  `Crawl-delay`), never refetches a cached order, and stops at the first
-  429/5xx. Keep it that way; `tests/test_update.py` checks each rule with
-  the network, clock and jitter stubbed. Tests and manual runs never send a
-  real request to either store.
-
-### Replacing an export with a newer one
-
-Amazon's export is cumulative, so a newer one replaces the old folders
-wholesale. Before replacing, move the old folders into
-`archive/<store>-<retrieval date>/` rather than deleting them, and compare the
-two: newer exports have blanked some digital product names to
-`Not Applicable`, and the archive is the only remaining copy of those names.
-
-## How to search
-
-Run these from the repo root.
-
-### Quick lookup: ripgrep
-
-Fine for *finding* whether/where something exists (case-insensitive):
+These are what CI runs (`.github/workflows/ci.yml`); run them before pushing.
 
 ```bash
-rg -i "soldering iron" "Your Amazon Orders/Order History.csv"
-rg -i "<order id>" "Your Amazon Orders"
-rg -i "<term>" -g '*.csv' .
+python3 -m unittest discover -s tests            # also on Python 3.10
+uvx pylint==4.1.3 skills/order-history/scripts/order_history skills/order-history/scripts/order-history tests
+uvx pyink --check skills tests skills/order-history/scripts/order-history
+npm --prefix web ci && npm --prefix web run build && npm --prefix web test
+ORDER_HISTORY_TEST_SHELL="$PWD/web/dist/index.html" python3 -m unittest discover -s tests -p test_page.py
 ```
 
-### Anything structured: parse the CSV properly
+- Pylint uses Google's pylintrc with `max-line-length=88` (CI downloads it at a fixed
+  commit). Keep to Python 3.10 syntax: no reuse of an f-string's own quote character
+  inside it. pyink takes its target version from `requires-python` in `pyproject.toml`.
+- `npm --prefix web test` runs `tests/search_cases.json` against `web/src/search.ts`, so
+  the page and `search.py` can't drift.
+- The plugin manifests: `claude plugin validate .claude-plugin/plugin.json` and
+  `claude plugin validate .claude-plugin/marketplace.json` (not in CI).
+- npm dependencies are pinned to exact versions (each at least two weeks old when
+  chosen) with a lockfile.
+- Test stubs that narrow `PATH` call other tools by absolute path.
 
-**Do NOT use `cut`/`awk`/naive comma-splitting on these files.** Fields contain
-quoted commas AND embedded newlines (gift messages and addresses wrap across
-lines, so line counts are larger than record counts). Naive splitting silently
-returns fragments of the wrong field. Use Python's `csv` module:
+## Releases
 
-```bash
-python3 -c '
-import csv, sys
-term = sys.argv[1].lower()
-with open("Your Amazon Orders/Order History.csv", newline="") as f:
-    for r in csv.DictReader(f):
-        if term in r["Product Name"].lower():
-            print(r["Order Date"][:10], r["Order ID"], r["Total Amount"], r["Currency"], r["Product Name"][:80])
-' "search term"
-```
-
-Look up a full order by ID:
-
-```bash
-python3 -c '
-import csv, sys
-with open("Your Amazon Orders/Order History.csv", newline="") as f:
-    for r in csv.DictReader(f):
-        if r["Order ID"] == sys.argv[1]:
-            print({k: v for k, v in r.items() if v not in ("Not Available", "Not Applicable", "")})
-' "111-1234567-1234567"
-```
-
-### Search tool (web UI)
-
-The page is a self-contained `index.html` in the data folder with live search
-over every store's orders, including product thumbnails. Filters: store,
-physical/digital, and an Items/Orders view (Orders groups items under one card
-per order and highlights the matching items). The list is virtualized, so
-thousands of rows scroll without paging. Open it directly — no server needed;
-the data is embedded. `order-history import` rebuilds it; to rebuild by hand:
-
-```bash
-skills/order-history/scripts/order-history build
-```
-
-How it fits together:
-
-- Each store is a vendor module (`order_history/vendors/<store>.py`) returning
-  orders in one normalized shape (documented on `model.new_order()`). A store
-  with no imported export is skipped.
-- `web/` builds the **page shell**: the page with its
-  `<script id="order-data" type="application/json">` element left empty.
-  `order_history/page.py` puts the data in (every `<` escaped as `\u003c`) and
-  writes `<data>/index.html` atomically. The data carries a `format` number;
-  `page.py`'s `FORMAT` and `web/src/load.ts`'s `DATA_FORMAT` must change
-  together, and a page whose numbers differ shows a message instead.
-- The shell comes from the cache (`~/.cache/order-history/`), else a local
-  `npm run build` in `web/` (a checkout with npm), else the `page-shell.html`
-  attached to the GitHub release for this version (then cached). With none,
-  the build exits 4 and the old page stays. `release.yml` attaches the shell
-  when a `v*` tag is pushed; the tag must be `v` + `order_history.__version__`.
-- To add a store: write its vendor module, list it in `vendors/__init__.py`,
-  and add a `--store-<id>` color in `web/src/styles.css`.
-- Page checks: `npm --prefix web ci && npm --prefix web run build`, then
-  `npm --prefix web test` (runs `tests/search_cases.json` against
-  `web/src/search.ts`, so the page and `search.py` can't drift).
-- npm dependencies are pinned to exact versions (each one at least two weeks
-  old when chosen) with a lockfile.
-- The built page holds purchase data and lives only in the data folder,
-  outside the checkout. `web/dist/` (the empty shell) is gitignored too.
-
-## Cross-referencing (join keys)
-
-- **`Order ID`** is the join key across `Order History.csv`,
-  `Returns Status.csv`, `Refund Details.csv`, `Replacement Orders.csv`,
-  `Return Requests.csv`, and `Additional Data/Your Orders.Returns.1/`.
-  Digital orders use their own Order ID space (`Digital Content Orders.csv` ↔
-  `Digital Returns.csv`).
-- **`ASIN`** identifies the product. Useful URLs:
-  - Product page: `https://www.amazon.com/dp/<ASIN>`
-  - Order details: `https://www.amazon.com/gp/your-account/order-details?orderID=<Order ID>`
-  - Product image (no auth, three tiers of reliability):
-    1. `images.json` — local cache, built by `order-history update
-       --amazon-images` (`enrich()` in `order_history/vendors/amazon.py`).
-       Without the flag no request goes to any Amazon host.
-       `{"src": "i", "id": "<imageId>"}` means
-       `https://m.media-amazon.com/images/I/<imageId>._SL160_.jpg` (stable CDN
-       URL, any `_SL<px>_` size tag works); `{"src": "p"}` means tier 2 works;
-       `{"src": null}` means no image found.
-    2. `https://images-na.ssl-images-amazon.com/images/P/<ASIN>.01._SL250_.jpg` —
-       reliable for books (ISBN-style ASINs); for modern `B0…` ASINs it often
-       returns a 1×1 placeholder GIF (43 bytes) with HTTP 200, so check
-       image dimensions/size, not status code.
-    3. Scrape `https://www.amazon.com/dp/<ASIN>` with a browser User-Agent and
-       extract `"hiRes":"https://m.media-amazon.com/images/I/…"` or
-       `data-old-hires` — this is what `update --amazon-images` automates
-       (rate-limited, captcha-aware, resumable).
-- **`Photograph ID`** in `Delivery Photos.csv` is the filename (without
-  `.jpeg`) under `Media/YourOrders.PhotoOnDelivery/media/`. The CSV has the
-  delivery date and GPS coordinates; it does **not** carry an Order ID, so
-  match delivery photos to orders by comparing dates against `Ship Date`.
-
-## Gotchas
-
-- **Embedded newlines in quoted fields** — line counts ≠ record counts; see above.
-- **Sentinel values**: empty-ish fields hold `Not Available` or
-  `Not Applicable`, not empty strings.
-- **Excel-armored negatives**: discount fields encode negative numbers as
-  `'-2.2'` (leading apostrophe inside quotes). Strip `'` before parsing floats.
-- **Thousands separators**: some amounts are written `1,234.56`.
-- **BOM**: CSVs under `Additional Data/` start with a UTF-8 BOM — open with
-  `encoding="utf-8-sig"` in Python or the first column name will be corrupted.
-- **Multiple currencies**: orders from other marketplaces are GBP/EUR/etc.
-- **`Additional Data/Your Orders.Returns.1/README.txt`** is Amazon's own
-  glossary for refund statuses, destinations, and failure reasons — read it
-  before interpreting that CSV.
-- Export paths contain spaces — always quote them in shell commands.
-
-## Before committing
-
-This repo is meant to be publishable. Before every commit, check the staged
-diff for personal data: email addresses, home-directory paths, real order
-IDs, product names from the exports, addresses, and counts or dates that
-describe one account. Use made-up examples (`111-1234567-1234567`) instead.
+The version is `order_history.__version__`. `pyproject.toml` reads it, and
+`.claude-plugin/plugin.json`'s `version` must equal it (a test checks), so change both
+together. Pushing the tag `v<version>` runs `release.yml`, which checks the tag against
+the package, builds the page shell and attaches it to the release as `page-shell.html`.
+Releases are immutable once published.

@@ -58,7 +58,7 @@ counts (AGENTS.md, "Before committing").
 | M2 | `import`: detect, stage, compare, archive, swap, rollback | M1 | complete |
 | M3 | Node-free page; `search/` removed; CI and release workflow | M2 | complete |
 | M4 | `update`: Adafruit items, opt-in Amazon images | M3 | complete |
-| M5 | Skill, vendor docs, `--skill`, plugin manifest, packaging, docs | M4 | pending |
+| M5 | Skill, vendor docs, `--skill`, plugin manifest, packaging, docs | M4 | complete |
 | M6 | Migrate real data, final verification, first release | M5 | pending |
 
 ## Design coverage
@@ -181,69 +181,30 @@ Open limitations:
 
 ## M5 — Skill, plugin, packaging and docs
 
-**Design coverage:** R8, R9
+**Outcome:** `skills/order-history/SKILL.md` (first run, import and what to report, search,
+status, update, privacy, a per-command exit-code table, migrating from an in-checkout
+layout) and `vendors/amazon.md`, `vendors/adafruit.md` (the export formats and every gotcha
+moved out of AGENTS.md); `--skill` and `skill [STORE] [--json]` printing them through
+`importlib.resources` (the package holds symbolic links to them; the wheel holds files);
+`.claude-plugin/plugin.json` and a one-plugin `marketplace.json`, both passing `claude plugin
+validate --strict`; `pyproject.toml` for `uv tool install`; README, AGENTS.md (now the
+developer guide) and GLOSSARY rewritten. 173 unit tests.
 
-**Dependencies:** M4
-
-**In scope:**
-
-- `SKILL.md`, `vendors/amazon.md` and `vendors/adafruit.md`;
-- `--skill` and `skill`;
-- `.claude-plugin/plugin.json`;
-- `pyproject.toml` (for `uv tool install`);
-- rewrites of the README, AGENTS.md and GLOSSARY.
-
-### Implementation steps
-
-1. Write `SKILL.md`, covering:
-   - when to use the skill;
-   - first run (`init`);
-   - the import flow, including reporting the comparison to the user;
-   - search, status and update;
-   - the privacy note (search results go to the model provider);
-   - migrating from an in-checkout layout.
-
-   It points to `vendors/<id>.md` for each store's quirks and how to get its
-   export. The export-format sections of AGENTS.md move into those files.
-2. `--skill` prints `SKILL.md` through `importlib.resources`, with the version
-   stamped in.
-3. Write the plugin manifest. Check how plugins are discovered and validated
-   in Claude Code's current documentation before writing it, rather than
-   guessing.
-4. Add `pyproject.toml` (`[tool.uv] package = true`, a script entry point,
-   explicit packages).
-5. Update the docs:
-   - README: install as a plugin, with `uv tool`, or from the script path.
-   - AGENTS.md: the developer guide for this repo, plus a pointer to the
-     skill.
-   - GLOSSARY: add vendor module, data folder, page shell, skill and plugin.
-
-### Acceptance criteria
-
-- [ ] `order-history --skill` prints exactly what `SKILL.md` contains, plus
-  the version line. A test checks this.
-- [ ] The plugin manifest passes the validator found in step 3, or a manual
-  review against the documented schema if there is no validator.
-- [ ] `uv tool install .` puts a working `order-history` on `PATH`.
-- [ ] The docs mention no `search/` commands. The privacy note appears in both
-  the README and SKILL.md.
-
-### Testing and review
-
-- **Tests:** the `--skill` equality test. Install in a temporary environment
-  and run `order-history status`.
-- **Review focus:** the skill is understandable on a cold start by an agent
-  that has never seen this repo; it works under any agent (use the
-  `agent-agnostic-skills` portability scan).
-
-### Session sizing
-
-This is mostly writing; it's small to medium. Split point if it grows: land
-the skill and vendor docs first, then packaging and the plugin.
+**Design coverage:** R8, R9. **Dependencies:** M4.
 
 ### Evidence and findings
 
-Status: pending. Evidence: [M5](evidence/M5.md). Notebook: [M5](notebook/M5.md).
+Status: complete. Evidence: [M5](evidence/M5.md) (full milestone definition, checks and
+review). Notebook: [M5](notebook/M5.md).
+
+Open limitations:
+
+- The plugin is validated but was never loaded into a Claude Code session; the install line
+  works only once this is on `main`.
+- Before tagging `v0.1.0` (M6), `__version__` and `plugin.json`'s `version` both become
+  `0.1.0` (a test keeps them equal; `release.yml` checks the tag against `__version__`).
+- `marketplace.json` settles the design's open "repo URL or marketplace listing" question
+  as "the repo is its own marketplace" (notebook decision); a listing elsewhere stays open.
 
 ## M6 — Migration, final verification and first release
 
@@ -312,39 +273,43 @@ Status: pending. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
 - Zip extraction has no cap on total size or member count (M2 review F2, declined for
   now). If a cap is wanted, set it from a real export's size, since Amazon's run to
   gigabytes with photos and invoices.
-- Add exit codes 20/21 (import busy or rolled back / rollback failed) to the design's
-  exit-code table and the skill (M5). The skill must also give `update`'s meanings (20:
-  nothing saved, retry later; 21: some saved, run again later; 3: no lookup email) and say
-  that 21 is read with the command (M4 review F5).
+- Done in M5: exit codes 20/21 per command, 3 and 4 in the design's table and the skill's
+  per-command table (M4 review F5).
 - `update` has no `--limit`, `--delay` or `--refresh` (the old scripts had them). Add
   `--limit` if a first full Amazon image run (thousands of pages at about 2 s each) needs
   to be spread out; never let `--delay` go below the 10 s Adafruit floor. Found in M4.
 - An Adafruit order whose lookup always fails is asked again on every `update`. If that
   shows up in real use, cache the failure with a date and retry it only after a while.
   Found in M4.
-- Exit 4 (no page shell, or the page couldn't be written) and `build` belong in the design's
-  exit-code table and the skill (M5).
 - The CLI has no equivalent of the page's Orders-view search (terms spread across an
   order's items). Add `search --orders` if an agent needs it.
+- From the plugin cache (a full copy of the repository, `web/` included) `page.py` takes the
+  development path whenever `npm` is on `PATH`, running `npm ci` and a build inside the
+  plugin's cached copy instead of downloading the shell. Consider requiring a `.git` beside
+  `web/`, or an opt-in variable, for the local build. Found in M5.
+- `claude plugin validate` reports `ICON_MISSING` (non-blocking); add a 512–2048 px PNG
+  only if the plugin is submitted to Anthropic's directory. Found in M5.
 - Phase 2: a download flow for each vendor, and `add --provisional` from order
   pages. Not planned yet.
 
 ## Next session
 
-- **Current milestone:** M4 complete (checkpoint commit `plan: M4 — Update` on branch
-  `m4-update`). M5 is next.
-- **Completed work:** M1–M3 merged (PRs #3–#5). M4 is committed locally on `m4-update`;
+- **Current milestone:** M5 complete (checkpoint commit `plan: M5 — Skill, plugin, packaging
+  and docs` on branch `m5-skill`). M6 is next.
+- **Completed work:** M1–M4 merged (PRs #3–#6). M5 is committed locally on `m5-skill`;
   pushing, the pull request and merging are the orchestrator's (with the user's go-ahead).
   Required checks on `main` are `lint`, `page`, `test (3.10)` and `test (3.x)`.
 - **Uncommitted state:** none for the milestone. `.no-pitch` stays untracked.
-- **Decisions pending:** none. M3's shell-integrity question is resolved (immutable releases
-  on, 2026-10-25).
+- **Decisions pending:** whether the repo-as-its-own-marketplace (`marketplace.json`) stays
+  (recommended: keep; it is what makes the README's plugin install line work).
 - **Context boundary:** normal completion.
-- **Resume action:** after M4 merges, create `m5-skill` from an up-to-date `origin/main`
-  and begin M5. The skill's exit-code table needs import's and update's 20/21 (backlog).
+- **Resume action:** after M5 merges, create `m6-migrate` from an up-to-date `origin/main`
+  and begin M6: record the counts in the data folder's `NOTES.md`, follow SKILL.md's
+  "Migrating from an in-checkout layout" on the main checkout's data, bump `__version__`
+  and `plugin.json` to `0.1.0` before the tag, and only with the user's go-ahead tag and
+  delete the old folders.
 - **Read first:**
-  - [design](design.md), R8 and R9;
-  - this plan's M5 section and the backlog's exit-code items;
+  - [design](design.md), R10 and R9;
+  - this plan's M6 section and the backlog's M6 items (gather the Amazon folders first);
   - [notebook index](notebook/index.md);
-  - `AGENTS.md` (its export-format sections move into `vendors/<id>.md`), `README.md`,
-    `order_history/cli.py` (the commands and exit codes the skill documents).
+  - `skills/order-history/SKILL.md` (the migration steps M6 follows and tests).

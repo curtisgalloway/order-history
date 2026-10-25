@@ -4,6 +4,8 @@
 """The order-history command line.
 
 Data goes to stdout and messages to stderr. --json prints one JSON document.
+--skill (or the skill command) prints the agent instructions, SKILL.md, with
+the version stamped in; `skill <store>` prints that store's instructions.
 
 Exit codes: 0 ok; 1 nothing found; 2 bad usage, or a file no store (or several)
 recognizes; 3 no data folder (run init); 4 the page couldn't be built: no
@@ -12,6 +14,10 @@ couldn't be written; the old page is unchanged, and an import is undone; 20
 nothing changed: another import is running (also for build), or a failure was
 rolled back, retry; 21 an import's rollback failed, check the folders named;
 30 an older export without --force, or an unsafe zip member or folder entry.
+
+skill: 0 printed; 2 an unknown store; 3 a store with no instruction file. It
+needs no data folder. --json wraps the text as {store, version, text}; --skill
+always prints Markdown. The per-command table is in SKILL.md ("Exit codes").
 
 update: 0 done (possibly nothing to do); 3 also when Adafruit orders need
 items and there is no lookup email (this wins over 20 and 21: retrying can't
@@ -26,6 +32,7 @@ again later; 4 the page couldn't be rebuilt.
 
 import argparse
 import datetime
+from importlib import resources
 import json
 import os
 import re
@@ -82,6 +89,55 @@ def _emit_json(doc):
     sys.stdout.write("\n")
 
 
+# The skill's documents ship inside the package (symbolic links to
+# skills/order-history/SKILL.md and vendors/<id>.md, which a wheel stores as
+# files), so --skill always prints the text of the version that runs.
+SKILL_RESOURCE = "agent_skill.md"
+SKILL_STAMP = "\nPrinted by `order-history --skill`, version {version}.\n"
+
+
+def _write_text(text):
+    """Write text to stdout as UTF-8 bytes, whatever the locale says."""
+    out = sys.stdout
+    if hasattr(out, "buffer"):
+        out.flush()
+        out.buffer.write(text.encode("utf-8"))
+        out.buffer.flush()
+    else:  # a text stream with no bytes underneath (tests)
+        out.write(text)
+
+
+def skill_text():
+    """SKILL.md as shipped, with a version line after its frontmatter."""
+    text = resources.files("order_history").joinpath(SKILL_RESOURCE)
+    text = text.read_text(encoding="utf-8")
+    end = 0
+    if text.startswith("---\n"):
+        end = text.index("\n---\n", 3) + len("\n---\n")
+    return text[:end] + SKILL_STAMP.format(version=__version__) + text[end:]
+
+
+def vendor_doc(vendor_id):
+    """vendors/<id>.md as shipped; FileNotFoundError when there is none."""
+    doc = resources.files("order_history.vendors").joinpath(vendor_id + ".md")
+    return doc.read_text(encoding="utf-8")
+
+
+class _SkillAction(argparse.Action):
+    """--skill: print SKILL.md and exit 0, before any command is parsed.
+
+    Always Markdown, so `--skill > SKILL.md` installs it; `skill --json` wraps it.
+    """
+
+    def __init__(self, option_strings, dest, **kwargs):
+        kwargs.update(nargs=0, default=argparse.SUPPRESS)
+        super().__init__(option_strings, dest, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        _write_text(skill_text())
+        parser.exit(EXIT_OK)
+
+
 def _data_dir(args):
     """The data folder, which must exist; exits 3 naming init otherwise."""
     try:
@@ -112,6 +168,29 @@ def _load_all(data_dir, registry):
 def _all_orders(loaded):
     orders = [o for _, vendor_orders in loaded for o in vendor_orders or []]
     return model.finish(orders)
+
+
+def cmd_skill(args, registry):
+    """Print SKILL.md, or one store's instructions."""
+    if args.store is None:
+        text = skill_text()
+    else:
+        known = [v.ID for v in registry]
+        if args.store not in known:
+            raise CliError(
+                f"unknown store {args.store!r}; known: " + ", ".join(known), EXIT_USAGE
+            )
+        try:
+            text = vendor_doc(args.store)
+        except FileNotFoundError as e:
+            raise CliError(
+                f"no instructions for store {args.store!r}", EXIT_NO_DATA
+            ) from e
+    if args.json:
+        _emit_json({"store": args.store, "version": __version__, "text": text})
+    else:
+        _write_text(text)
+    return EXIT_OK
 
 
 def cmd_init(args, registry):
@@ -511,8 +590,22 @@ def build_parser():
         parents=[common],
     )
     parser.add_argument("--version", action="version", version=__version__)
+    parser.add_argument(
+        "--skill",
+        action=_SkillAction,
+        help="print the agent instructions (SKILL.md) and exit",
+    )
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
+    p = sub.add_parser(
+        "skill",
+        parents=[common],
+        help="print the agent instructions",
+        description="Print SKILL.md (as --skill does), or with a store ID that"
+        " store's instructions: how to get its export, and its quirks.",
+    )
+    p.add_argument("store", nargs="?", help="a store ID, such as amazon")
+    p.set_defaults(func=cmd_skill)
     p = sub.add_parser("init", parents=[common], help="create the data folder")
     p.set_defaults(func=cmd_init)
     p = sub.add_parser("status", parents=[common], help="what is imported")

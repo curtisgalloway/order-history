@@ -1,0 +1,236 @@
+---
+name: order-history
+description: Search and maintain the user's own purchase history from the order exports that stores let them download (Amazon's "Request My Data" zip, Adafruit's order-history CSV), through the order-history command-line tool. Use when the user asks when or where they bought something, what an order contained or cost, wants a store export imported ("import this"), wants the local order search page rebuilt, or wants missing item lists or product images filled in.
+---
+
+<!--
+SPDX-FileCopyrightText: 2026 Curtis Galloway
+SPDX-License-Identifier: Apache-2.0
+-->
+
+# Order history
+
+`order-history` keeps the user's purchase history from several stores in one local
+**data folder** and answers questions about it. The user downloads each store's export
+(the file a store lets you download with your own orders); you import it, report what
+changed, and search it. The tool also writes a search page, `index.html` in the data
+folder, which opens from disk with no server.
+
+**Privacy.** Everything you read from this tool (search results, orders, import reports)
+enters your context, so it is sent to the model provider like the rest of the
+conversation. Fetch only what the question needs: prefer a narrow `search` over dumping
+every order, and do not paste whole exports or caches. Never copy anything from the data
+folder into a repository, an issue or a public document.
+
+## Running it
+
+Use the first that works:
+
+1. `order-history` on `PATH` (installed with `uv tool install`). Check with
+   `order-history --version`.
+2. `python3 <skill-dir>/scripts/order-history`, where `<skill-dir>` is the folder that
+   holds this SKILL.md. Needs Python 3.10 or later and nothing else.
+
+If the data folder holds a `NOTES.md` (the user's notes about their exports: whose
+account, when each was downloaded), read it before importing or answering questions about
+coverage. Keep it out of anything you write elsewhere.
+
+Below, `order-history` stands for whichever one works. Every command takes `--json` (one
+JSON document on stdout; messages and progress go to stderr) and `--data-dir PATH`.
+Prefer `--json` and read the document rather than the exit status alone (the one exception
+is `--skill`, which always prints this file as Markdown). The command never prompts, so it is safe to run unattended.
+
+The store instructions are in `vendors/<store>.md` beside this file: what to download,
+the export's columns and quirks, and how to read the raw files when the commands don't
+answer a question. Read only the store you need. Without the files at hand,
+`order-history skill amazon` (or `adafruit`) prints the same text, and
+`order-history --skill` prints this document.
+
+## First run
+
+```bash
+order-history status --json
+```
+
+Exit 3 with "run `order-history init`" means there is no data folder yet. Ask the user
+where to keep their order data (the default is `~/Documents/Order History`), then:
+
+```bash
+order-history init                       # or: order-history init --data-dir PATH
+```
+
+`init` creates the folder (mode 0700) and records it in
+`~/.config/order-history/config.json`. The folder is chosen by, in order: `--data-dir`,
+`$ORDER_HISTORY_DIR`, that config file, the default. Then ask the user to download an
+export (see `vendors/<store>.md`) and import it.
+
+## Importing an export
+
+The user gives you a path: a zip, a CSV, or an already-unzipped folder. You don't need to
+know which store it is from; the tool recognizes it by its contents.
+
+1. Preview: `order-history import PATH --dry-run --json`. Nothing changes.
+2. Tell the user what the report says (the fields are below), in a few lines: the store,
+   the export's date and the current one's, orders and items before and after, how many
+   were added and removed, and any findings. Removals and blanked titles deserve a
+   sentence each, since a cumulative export should only grow.
+3. If it looks right, run `order-history import PATH --json`. The previous export is moved
+   to `<store>/archive/<its date>/` (never deleted), the new one becomes current, and the
+   page is rebuilt. Report `archived_to` and `page`.
+
+Exit 30 with `"action": "refused_older"` means the file is older than the current export.
+Tell the user; import it with `--force` only if they say so. Exit 2 means no store (or
+more than one) recognized the file: say which file, and check it is the export the vendor
+file describes.
+
+The report (`--json`) holds:
+
+- `store`, `name`, `source` (the path given), `action` (`imported`, `dry_run` or
+  `refused_older`), `as_of` (`old` and `new`: the newest order date in each export);
+- `orders` and `items`: `before`, `after`, and the `added` and `removed` lists (order IDs;
+  for items, `{order, asin, name}`);
+- `findings`: store-specific lists. Amazon has `titles_renamed` and `titles_blanked`
+  (`{order, asin, old, new}`): a newer export can blank a digital title, and the archived
+  export is then the only copy of the old name;
+- `archived_to`, `removed_staging` (folders left by an interrupted import, now removed),
+  and `page` (the rebuilt page, or null).
+
+## Answering questions
+
+```bash
+order-history search soldering iron --json        # every term must match
+order-history search usb cable --store adafruit --kind physical --json
+order-history order 111-1234567-1234567 --json    # one order; --store if the ID repeats
+order-history status --json                       # what is imported, gaps, page time
+```
+
+`search` splits the query on spaces and keeps an item when every term is a substring
+(ignoring case) of the item's fields (name, Amazon ASIN and department, Adafruit PID) or
+its order's (store name, order ID, date, status, site, shipping method, and the word
+`physical` or `digital`). So `cable` also finds "cables", and `2024-03` finds that month.
+It returns orders, newest first, each holding only its matching items. Its document is
+`{terms, empty, orders}`; `order`'s is `{id, empty, order}`. Exit 1 with `"empty": true`
+means nothing matched, which is an answer, not an error: try fewer or other terms
+(a brand, a shorter word) before telling the user there is no such purchase.
+
+An order has `store`, `id`, `date` (YYYY-MM-DD), `currency`, `items` (each with `name`,
+`qty`, and when known `unit`, `total`, `url`, and `asin` or `pid`), and when present
+`total`, `status` (`In progress` for an order still in flight; absent for the normal
+finished state), `digital`, `site`, `shipMethod`, `url` and `summary`. Empty fields are
+left out. An Adafruit order with an empty `items` list hasn't had its item list fetched
+yet (see `update`).
+
+`status` lists each store with `status` (`ok` or `missing`), `as_of`, `orders`, `items`,
+and `gaps` (`items_unfetched` for Adafruit, `images_missing` for Amazon), plus
+`page_built` and `import_running`. `import_failed` on a store means an import couldn't
+undo itself: tell the user and show them the file it names before doing anything else.
+
+`order-history build` rebuilds the page from the current exports (import and update do it
+themselves).
+
+## Filling in what exports leave out: update
+
+```bash
+order-history update --dry-run --json      # how many lookups are missing; sends nothing
+order-history update --json
+```
+
+- **Adafruit item lists** (on by default). Adafruit's export has no items; `update` looks
+  each order up on Adafruit's guest order-status page. It needs the account email: from
+  `--email`, `$ADAFRUIT_EMAIL`, or `<data>/adafruit/lookup_email.txt` (ask the user, and
+  offer to save it in that file). It reads robots.txt first, waits at least 10 seconds
+  between lookups, looks up only orders it hasn't already, and stops at the first sign of
+  throttling. Don't try to speed it up or work around a stop.
+- **Amazon product images** only with `--amazon-images`, and only when the user asks for
+  them: it scrapes amazon.com product pages, which may be against Amazon's conditions of
+  use. Say so when offering it.
+
+With nothing missing it sends no request and exits 0, so it is safe to run on a schedule.
+Each store's result has `requests`, `changed` (lookups saved), `pending` (still missing),
+`failed`, `stopped` (`{reason, message}`: `throttled`, `robots`, `robots_unreadable` or
+`unreachable`), `skipped` and `error`.
+
+## Exit codes
+
+Read the code together with the command: 20 and 21 mean "nothing done" and "partly done"
+for every command, but what was partly done differs.
+
+| Code | `search`, `order` | `import` | `update` | `build`, `init`, `status` |
+| --- | --- | --- | --- | --- |
+| 0 | found | imported, or dry run | done, or nothing to do | done |
+| 1 | nothing matched | — | — | — |
+| 2 | bad usage; an unknown `--store`; an order ID found in several orders | bad usage; file not recognized, or claimed by two stores | bad usage | bad usage; unreadable config |
+| 3 | no data folder | no data folder | no data folder; or Adafruit orders need items and there is no lookup email | no data folder (not `init`) |
+| 4 | — | the page couldn't be built; the import was undone | the page couldn't be rebuilt; the caches are saved, run `build` | `build`: no page shell, or the page couldn't be written; the old page is kept |
+| 20 | — | nothing changed: another import is running, or a failure was rolled back; retry | nothing saved: throttled, robots.txt said no or couldn't be read, every lookup failed, or another update or an import is running; retry later | `build`: an import is running; retry |
+| 21 | — | an import failed **and couldn't undo itself**: stop, show the user the folders named, change nothing | some lookups saved, then the run stopped; or the rebuild met a running import. Run `update` (or `build`) again later | — |
+| 30 | — | older than the current export (pass `--force` only if the user says so), or an unsafe zip member or folder entry | — | — |
+
+`--skill` and `skill` need no data folder; `skill <store>` exits 2 for an unknown store.
+
+Exit 4 from a fresh install with no Node usually means the page shell (the search page
+with no data in it, downloaded once per version from the project's GitHub release) could
+not be fetched: offline, or no release exists for this version yet. An import that exits 4
+is undone, so on a new machine nothing can be imported until a shell is found: tell the
+user to go online, install a released version, or run the tool from a clone with Node and
+npm installed (it then builds the shell itself). An existing data folder can still be
+searched; only the page is stale.
+
+## The data folder
+
+```
+<data>/
+  index.html                  the search page (open it in a browser)
+  NOTES.md                    the user's notes about their exports (optional)
+  amazon/current/             the imported export, as unzipped
+  amazon/archive/<date>/      earlier exports, kept
+  amazon/images.json          product image cache (update --amazon-images)
+  adafruit/current/order_history.csv
+  adafruit/archive/<date>/
+  adafruit/items.json         item lists (update)
+  adafruit/lookup_email.txt   account email for the lookups
+```
+
+Never edit `current/` by hand; import a new export instead. The tool never deletes an
+archive.
+
+## Migrating from an in-checkout layout
+
+Before this tool, the exports lived inside a clone of its repository: Amazon's unzipped
+folders (`Your Amazon Orders/`, `Your Returns & Refunds/`, `Additional Data/` and others)
+at the checkout's top level, `Adafruit/order_history.csv`, `Adafruit/items.json`,
+`Adafruit/lookup_email.txt`, `search/images.json`, `archive/` and `LOCAL.md`. To move
+them into a data folder (`$C` is that checkout, `$D` the data folder; quote both, since
+the paths have spaces):
+
+1. Note each store's order and item counts from the old page or `LOCAL.md`, to compare at
+   the end.
+2. `order-history init`, then confirm `$D` with `order-history status --json`.
+3. Amazon: if the original zip is still around, `order-history import <zip>`. Otherwise
+   gather the export's folders into one new folder outside the checkout first (importing a
+   folder copies all of it, and the checkout also holds the code and `.git`):
+
+   ```bash
+   mkdir "$HOME/amazon-export"
+   cp -R "$C/Your Amazon Orders" "$C/Your Returns & Refunds" "$C/Additional Data" "$HOME/amazon-export/"
+   order-history import "$HOME/amazon-export" --json
+   ```
+
+   Copy every top-level folder the zip unpacked, not only these three.
+4. Adafruit: `order-history import "$C/Adafruit/order_history.csv" --json`.
+5. The caches and notes keep their formats; copy them in:
+
+   ```bash
+   cp "$C/Adafruit/items.json" "$C/Adafruit/lookup_email.txt" "$D/adafruit/"
+   cp "$C/search/images.json" "$D/amazon/"
+   cp "$C/LOCAL.md" "$D/NOTES.md"
+   mkdir -p "$D/amazon/archive" "$D/adafruit/archive"
+   cp -R "$C/archive/amazon-2026-01-31" "$D/amazon/archive/2026-01-31-from-checkout"
+   ```
+
+   Copy each `archive/<store>-<date>/` folder that way, into that store's `archive/`.
+6. `order-history build`, then `order-history status --json`: the counts must match step 1.
+   Open `$D/index.html` and search for something the user knows they bought.
+7. Only after the user has checked, and only with their go-ahead, delete the old folders
+   from the checkout (and `$HOME/amazon-export`). They are gitignored, so git won't show
+   them as changes either way.

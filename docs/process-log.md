@@ -150,3 +150,38 @@ Prevention: describe a privacy check by category ("private host names, LAN addre
 never by the literal patterns; the pattern list belongs in the user's instructions only.
 Fix belongs in: user instructions (privacy section: "Grep the body for these patterns")
 Status: open
+
+## 2026-10-25T15:37-0700 — failed command: zsh does not word-split a command in a variable (third time)
+Chapter: [M5](notebook/M5.md)
+What happened: an install check put `env -i PATH=... HOME=...` in `E` and ran `$E
+order-history status`; zsh ran the whole string as one command name ("no such file or
+directory: env -i PATH=..."), so every check in the batch failed with exit 127. The two
+earlier entries of this shape are still open.
+Cost: one rerun, through a small wrapper script.
+Prevention: the same as before (arrays, or a wrapper script); the instruction should say it
+in the shell-command rules, since reading the open entries didn't stop the third repeat.
+Fix belongs in: user instructions (shell command style: "the Bash tool runs zsh")
+Status: open
+
+## 2026-10-25T15:37-0700 — surprise: adding pyproject.toml retargeted the formatter
+Chapter: [M5](notebook/M5.md)
+What happened: `pyink --check` failed on two untouched files once `pyproject.toml` existed,
+because pyink takes its target version from `requires-python`.
+Cost: one format run and a note; two unrelated files in the diff.
+Prevention: when adding a `pyproject.toml` to a repo that already runs a formatter, rerun
+the formatter over the whole tree in the same step and expect changes.
+Fix belongs in: project instructions (AGENTS.md "Checks")
+Status: open
+
+## 2026-10-25T15:44-0700 — surprise: a written file lost a `\u` escape
+Chapter: [M5](notebook/M5.md)
+What happened: AGENTS.md was written with the text `` `\u003c` `` and the file held a bare
+`` `<` ``: the six-character escape was decoded on the way to disk. Nothing checked it; the
+review's docs arm found the sentence had become a no-op ("`<` escaped as `<`").
+It happens before any tool runs: the notebook entries describing it, written through a shell
+heredoc, lost the escape the same way; only text built in Python with `chr(92)` kept it.
+Cost: one review finding and two fix rounds.
+Prevention: after writing a file whose text must hold a literal `\uXXXX` (or other escape),
+grep the file for it; or write such lines with a script that spells the backslash out.
+Fix belongs in: tool (the harness's handling of `\u` sequences in tool input) / user instructions (the "non-printing characters" rule could mention it)
+Status: open

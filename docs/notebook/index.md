@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Notebook index
 
-Updated: 2026-10-25T15:21-0700
+Updated: 2026-10-25T15:44-0700
 
 A row is stale when its chapter has an entry newer than "indexed through".
 
@@ -51,6 +51,14 @@ Outcome: complete; `update` (Adafruit items; Amazon images only with `--amazon-i
 - Exit 20/21 keep M2's band meanings; 3 (no email) wins over them; F5 (21 shared with import) declined.
 - M3 F1 resolved: immutable releases on by user decision; design corrected.
 
+### [M5 — Skill, plugin, packaging and docs](M5.md)
+Entries: 2026-10-25T15:27-0700 through 2026-10-25T15:44-0700
+Outcome: complete; SKILL.md + vendor docs, `--skill`/`skill`, plugin and marketplace manifests, `pyproject.toml`, docs rewritten
+- The package holds symbolic links to the skill docs (not named SKILL.md); the wheel stores files.
+- The repo is its own one-plugin marketplace so the plugin can be installed; validated, never loaded.
+- `pyproject.toml` retargeted pyink (parenthesized `with` in two untouched files).
+- Review: 4 findings, all fixed (skill --json, exit-4 note, NOTES.md, a lost `\u003c`).
+
 ## Threads
 - **Privacy of tracked files:** [design](design.md), [M4](M4.md) — the draft quoted account
   counts and had to be scrubbed; M4's privacy note first listed the private grep patterns.
@@ -63,5 +71,6 @@ Outcome: complete; `update` (Adafruit items; Amazon images only with `--amazon-i
   by the user's choice of immutable releases.
 - **Never deleting data:** [M2](M2.md) — the tool removes only its own `.staging-*`
   folders; rollback, the archive-name check and the failed-rollback note guard the rest.
-- **Exit-code bands:** [M2](M2.md), [M4](M4.md) — 20/21 mean "nothing done" / "partly done"
-  for both import and update; the skill (M5) must give each command's meaning.
+- **Exit-code bands:** [M2](M2.md), [M4](M4.md), [M5](M5.md) — 20/21 mean "nothing done" /
+  "partly done" for both import and update; M5's skill and the design give each command's
+  meaning.
