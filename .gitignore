@@ -20,3 +20,6 @@ __pycache__/
 
 # Earlier exports kept after replacing them with newer ones.
 /archive/
+
+# Opt-out marker for a local pre-write hook; machine-local, never tracked.
+/.no-pitch

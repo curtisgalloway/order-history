@@ -52,7 +52,7 @@ counts (AGENTS.md, "Before committing").
 
 | ID | Outcome | Dependencies | Status |
 |----|---------|--------------|--------|
-| M1 | Package, data folder, vendors load; `init`/`status`/`search`/`order` | — | pending |
+| M1 | Package, data folder, vendors load; `init`/`status`/`search`/`order` | — | complete |
 | M2 | `import`: detect, stage, compare, archive, swap, rollback | M1 | pending |
 | M3 | Node-free page; `search/` removed; CI and release workflow | M2 | pending |
 | M4 | `update`: Adafruit items, opt-in Amazon images | M3 | pending |
@@ -76,87 +76,24 @@ counts (AGENTS.md, "Before committing").
 
 ## M1 — Package, data folder, and read-only commands
 
-**Design coverage:** R1 (load path), R2, R5, R9
+**Outcome:** the `order-history` package under `skills/order-history/scripts/`, with
+`init`, `status`, `search` and `order` (text and `--json`, exit codes 0/1/2/3), both
+vendor loaders reading `<data>/<vendor>/current/`, invented fixtures, 59 unit tests, and
+a CI `test` job (Python 3.10 and latest, not yet required).
 
-**Dependencies:** none
-
-**In scope:**
-
-- the package under `skills/order-history/scripts/order_history/`;
-- `config.py` (R2) and `model.py`;
-- `vendors/amazon.py` and `vendors/adafruit.py`, providing `ID`, `NAME`,
-  `load`, `as_of` and `detect`;
-- `search.py`;
-- the CLI with `init`, `status`, `search` and `order`, plus `--json` and the
-  exit codes;
-- the `source` field reserved in the order shape;
-- invented fixtures and tests.
-
-**Out of scope:** `import` (M2), the page (M3), enrichment (M4). `search/` stays
-as it is.
-
-### Implementation steps
-
-1. Create the package layout from the design's "Layout (proposed)" section,
-   plus the `scripts/order-history` entry point, which adds its own folder to
-   `sys.path`.
-2. `config.py` resolves the data folder in R2 order. `init` creates it with
-   mode 0700 and writes `~/.config/order-history/config.json`. Tests redirect
-   `HOME` and `XDG_CONFIG_HOME`.
-3. `model.py` takes from `search/build.py`: `clean`, `money`, `status`,
-   `new_order`, `new_item`, the sentinels and the compaction. Add
-   `source="export"`.
-4. The vendor modules take the loaders from `build.py`, with paths relative
-   to `<data>/<vendor>/current/`. Adafruit merges `<data>/adafruit/items.json`,
-   and Amazon merges `<data>/amazon/images.json`.
-5. `search.py` follows `search/app/src/search.ts` (it moves to `web/` in M3): lower-cased haystacks, every term
-   must match, order fields count for each item. `tests/search_cases.json`
-   holds query → expected order IDs.
-6. CLI output:
-   - Data goes to stdout and logs to stderr.
-   - `--json` prints one document with stable key order.
-   - `search` exits 1 when nothing matches, with `"empty": true` in its JSON.
-7. Add a `test` job to CI (Python 3.10 and the latest) and extend `lint` to the
-   new paths. Neither is required yet; M3 changes the required checks.
-
-### Acceptance criteria
-
-- [ ] `order-history init --data-dir T` creates `T` with mode 0700 and records it.
-  A later `status` with no flags uses `T`.
-- [ ] The precedence holds: the flag beats the environment variable, which
-  beats the config file, which beats the default. Each case is tested.
-- [ ] `status` before `init` exits 3, and its message names `init`.
-- [ ] With the fixture exports placed in `current/`, `status --json` reports
-  each vendor's `as_of`, orders and items. A vendor with no export is
-  reported as `"missing"`, not as an error.
-- [ ] `search` returns every case in `search_cases.json` exactly, exits 1 when
-  nothing matches, and exits 0 with results otherwise.
-- [ ] `order ID` prints one order, and exits 1 for an unknown ID.
-- [ ] Unit tests and lint pass. CI's existing `build` and `lint` still pass.
-
-### Testing and review
-
-- **Tests:** config precedence; the loaders on fixtures, covering embedded
-  newlines, Excel-style `'-2.2'`, `1,234.56` and the Adafruit space-for-hyphen
-  quirk; search cases; CLI exit codes and JSON shape.
-- **Verify with:** the project checks above; `scripts/order-history status`
-  against a temporary data folder.
-- **Review focus:**
-  - loader output matches what `build.py` produces today for the same input
-    (compare on the fixtures);
-  - no default path points inside the checkout;
-  - stdout/stderr separation.
-
-### Session sizing
-
-Start from the design, `search/build.py` and `search/app/src/search.ts`. This
-is mostly moving existing code plus new tests. Split point if it grows: land
-config, model, vendors and `status` first, with search and order as a second
-commit.
+**Design coverage:** R1 (load path), R2, R5, R9. **Dependencies:** none.
 
 ### Evidence and findings
 
-Status: pending. Evidence: [M1](evidence/M1.md). Notebook: [M1](notebook/M1.md).
+Status: complete. Evidence: [M1](evidence/M1.md) (full milestone definition, checks and
+review). Notebook: [M1](notebook/M1.md).
+
+Open limitations:
+
+- The test comparing the new loaders with `search/build.py` runs only on Python 3.12+,
+  because `build.py` itself needs 3.12. It goes away with `search/` in M3.
+- `search` uses the page's Items-view rule (all terms on one item plus its order). The
+  page's Orders view (terms spread across an order's items) has no CLI equivalent.
 
 ## M2 — Import
 
@@ -477,21 +414,28 @@ Status: pending. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
 - Run `search_cases.json` against `web/src/search.ts` in the `page` job, using
   Node, so the two search implementations can't drift (a design risk). Small;
   can be added to M3 if there's room.
+- `status` parses each export twice (`load`, then `as_of`). Harmless at today's sizes
+  (M1 perf review); fold `as_of` into the loaded orders if it ever shows.
+- The CLI has no equivalent of the page's Orders-view search (terms spread across an
+  order's items). Add `search --orders` if an agent needs it.
 - Phase 2: a download flow for each vendor, and `add --provisional` from order
   pages. Not planned yet.
 
 ## Next session
 
-- **Current milestone:** none started. The plan is ready; M1 is next.
-- **Completed work:** the design (approved) and this plan, on branch `design`,
-  not pushed.
-- **Uncommitted state:** none expected after the plan's checkpoint commit.
-- **Decisions pending:** none for M1.
-- **Context boundary:** normal; this planning session ends here.
-- **Resume action:** the `design` branch needs pushing and merging, with the
-  user's go-ahead. Then create `m1-package` from `origin/main` and begin M1.
+- **Current milestone:** M1 complete (checkpoint commit `plan: M1 — Package, data
+  folder, and read-only commands` on branch `m1-package`). M2 is next.
+- **Completed work:** design and plan merged to `main` in PR #2 (`a72b900`). M1 is
+  committed locally on `m1-package`. Pushing it and opening and merging its pull request
+  need the user's go-ahead.
+- **Uncommitted state:** none for the milestone. `.no-pitch` (made by the user for a local
+  pre-write hook) is gitignored and stays untracked.
+- **Decisions pending:** none for M2.
+- **Context boundary:** normal completion.
+- **Resume action:** after M1 merges, create `m2-import` from an up-to-date `origin/main`
+  and begin M2.
 - **Read first:**
-  - [design](design.md);
-  - this plan's M1 section;
+  - [design](design.md), "Import flow" and R3/R4;
+  - this plan's M2 section;
   - [notebook index](notebook/index.md);
-  - `search/build.py` and `search/app/src/search.ts`.
+  - `skills/order-history/scripts/order_history/vendors/` and `cli.py`.

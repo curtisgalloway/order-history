@@ -37,3 +37,28 @@ Prevention: grep each new doc for numbers and names from the session before writ
 the commit.
 Fix belongs in: project instructions (AGENTS.md "Before committing")
 Status: open
+
+## 2026-10-25T13:56-0700 — surprise: pitch gate blocked M1 in a project with an approved design
+Chapter: [M1](notebook/M1.md)
+What happened: the first M1 session's first write (a `date` call chained with reads) was
+refused by a PreToolUse hook: "PITCH GATE: ... looks like a new project (no PITCH.md, 3
+commit(s), directory under 14 days old). Nothing gets written here until PITCH.md
+exists." The hook keys on the directory's age and commit count, not on whether a design
+exists, and its named escape file (`.no-pitch`) can't be created under the gate either.
+Cost: one milestone subagent launch, which stopped and reported back; a round trip
+through the orchestrator to the user.
+Prevention: have the hook treat an approved `docs/design.md` (or an existing plan) as
+past the pitch stage, and let it allow creating its own escape file.
+Fix belongs in: tool (the pitch-gate hook in agent-config)
+Status: resolved for this repo: user-created, gitignored .no-pitch; hook gap noted: it blocks creating its own named escape file
+
+## 2026-10-25T14:04-0700 — failed command: pylint quote rules vs Python 3.10 f-strings
+Chapter: [M1](notebook/M1.md)
+What happened: Google's pylintrc flagged single quotes inside f-strings
+(`inconsistent-quotes`); rewriting them with `.format()` then hit
+`consider-using-f-string`. Python 3.10 can't reuse an f-string's own quote.
+Cost: two extra lint-and-fix rounds.
+Prevention: when 3.10 is supported, pull subscripted values into locals before the
+f-string from the start.
+Fix belongs in: user instructions (Python conventions)
+Status: open

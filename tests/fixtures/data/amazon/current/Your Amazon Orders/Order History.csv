@@ -1,0 +1,10 @@
+"Website","Order ID","Order Date","Currency","Unit Price","Total Amount","Original Quantity","ASIN","Order Status","Shipping Address","Ship Date","Product Name","Department"
+"Amazon.com","111-0000001-0000001","2024-03-05T18:22:10Z","USD","24.99","24.99","1","B000TEST01","Closed","Test Person
+1 Example Street
+Springfield","2024-03-06T01:00:00Z","Example Soldering Iron, 60W","Tools"
+"Amazon.com","111-0000001-0000001","2024-03-05T18:22:10Z","USD","5.00","10.00","2","B000TEST02","Closed","Test Person
+1 Example Street
+Springfield","2024-03-06T01:00:00Z","Solder Wire Spool","Tools"
+"Amazon.com","111-0000002-0000002","2025-07-19T09:00:00Z","USD","1,234.56","1,234.56","1","B000TEST03","Authorized","Test Person, 1 Example Street","Not Available","Bench Power Supply","Electronics"
+"Amazon.co.uk","202-0000003-0000003","2023-11-30T12:00:00Z","GBP","3.50","'-2.2'","1","B000TEST04","Closed","Not Available","2023-12-01T00:00:00Z","Tea Towel (promotional credit)",""
+"Amazon.com","111-0000004-0000004","2022-01-02T08:00:00Z","USD","9.99","9.99","1","Not Available","Cancelled","Not Available","Not Available","Not Available","Not Applicable"
