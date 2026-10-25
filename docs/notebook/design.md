@@ -41,3 +41,12 @@ with generic wording, per the AGENTS.md privacy rule.
 ## 2026-10-25T12:22-0700 — checkpoint
 State: design drafted, waiting for the user's approval. Next: derive the implementation
 plan once approved.
+
+## 2026-10-25T13:27-0700 — direction: don't commit the page shell
+The user rejected committing the built shell. R7 now gets it from a version-keyed cache,
+a local build when Node is available, or the release asset `page-shell.html`. The data
+gains a `format` number so a mismatched shell fails clearly.
+
+## 2026-10-25T13:27-0700 — decision: design approved
+The user approved the rest of the design ("otherwise approved"). Design gate satisfied
+at this revision; next is deriving the implementation plan.

@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Agent-first order history — Design
 
-Revision: 2026-10-25, draft for review
+Revision: 2026-10-25, approved (page shell published as a release asset, not committed)
 
 **Terms** (more in [GLOSSARY.md](../GLOSSARY.md)):
 
@@ -19,7 +19,7 @@ Revision: 2026-10-25, draft for review
 - **Data folder**: where your exports, caches and the built page live. It is
   outside the code.
 - **Page shell**: the search page built once with no data in it. Python fills
-  in the data.
+  in the data. It is published with each release, never committed.
 
 ## Goal and non-goals
 
@@ -161,13 +161,24 @@ Assumptions:
   missing, and exit codes from the 20s band when a site throttles.
   *Check:* tests with the fetch function stubbed. The politeness rules keep
   their current tests or gain them.
-- **R7 Page without Node.** CI builds a data-free page shell from the Vite
-  source, and the built shell is committed. Python writes
-  `<data>/index.html` by putting the JSON into the shell's placeholder, and
-  neither import nor update calls Node. CI fails if the committed shell
-  differs from a fresh build of the source.
-  *Check:* a test builds the page with no `node` on `PATH`. The CI staleness
-  job fails on a deliberately stale shell.
+- **R7 Page without Node.** The built shell is never committed. The release
+  workflow builds a data-free shell from the Vite source and attaches it to
+  the GitHub release as `page-shell.html`. The tool gets a shell for its own
+  version in this order:
+  1. a cached copy at `~/.cache/order-history/page-shell-<version>.html`;
+  2. a local build, when the checkout has `web/` and `npm` is on `PATH`
+     (development);
+  3. a download of the asset from the release tagged `v<version>`, which is
+     then cached.
+
+  If none of these work (offline with no cache and no Node), the build exits
+  4 and names the release URL. Python writes `<data>/index.html` by putting
+  the JSON into the shell's placeholder; import and update call Node only in
+  case 2.
+  *Check:*
+  - a test builds the page from a cached shell with no `node` on `PATH`;
+  - a test of the download path, with the network call stubbed;
+  - a test that the offline, no-Node case exits 4.
 - **R8 Skill and plugin.**
   - `SKILL.md` teaches the import, search and update flows, and points to one
     instruction file per vendor.
@@ -210,8 +221,7 @@ skills/order-history/
     model.py                           new_order/new_item, money(), compaction
     store.py                           staging, archive, atomic swap (R3)
     search.py                          match rules shared with the page (R5)
-    page.py                            shell + data → index.html (R7)
-    page/shell.html                    built by CI, committed
+    page.py                            find/fetch/build shell; shell + data → index.html (R7)
     vendors/__init__.py                VENDORS registry
     vendors/amazon.py, adafruit.py
 web/                                   Vite + React source (moved from search/app)
@@ -309,10 +319,14 @@ The codes follow the house CLI conventions:
 - **One Python module plus one Markdown file per vendor.** It keeps each
   store's code and instructions together, and loads only the relevant store's
   notes into the agent.
-- **Commit the built page shell.** The alternative was downloading it from a
-  release on first run, which needs the network and adds a release step to
-  every change. Committing it costs a large generated file in diffs; CI's
-  staleness check keeps it honest.
+- **Publish the page shell as a release asset; don't commit it.** Chosen by
+  the user over committing it.
+  - The cost: the first build on a machine without Node needs the network
+    once, and a change to `web/` reaches users only through a release.
+  - The tag ruleset already set on the repo (no deleting or moving `v*` tags)
+    means a version's shell can't be swapped out under it.
+  - Keying the cache by version means a tool update fetches the matching
+    shell automatically.
 - **The data folder is a setting, defaulting to `~/Documents/Order History`.**
   Chosen by the user.
 - **The Node-free page is in phase 1.** Chosen by the user. Without it, a
@@ -346,10 +360,12 @@ The codes follow the house CLI conventions:
 - CI gets three jobs:
   - `lint`: as today, extended to `skills/` and `tests/`.
   - `test`: the unit tests on Python 3.10 and the latest version.
-  - `page`: builds the shell and fails if the committed copy differs.
+  - `page`: builds the shell and runs the injection test against it.
 
   The required checks become `lint`, `test` and `page`. The build job is
-  replaced, so the hardening script is re-run with the new check names.
+  replaced, so the hardening script is re-run with the new check names. A
+  separate release workflow, triggered by pushing a `v*` tag, builds the
+  shell and attaches it to that release.
 - Manual check: migrate this checkout's real data (R10), compare `status`
   counts with the current build, open the page and search for a known purchase.
 - The plugin manifest is checked with Claude Code's validator. The exact
@@ -367,6 +383,12 @@ The codes follow the house CLI conventions:
 - **Plugin distribution:** install from the repo URL, or through a
   marketplace listing? This doesn't block phase 1. Recorded for the README.
 - **Windows** is unverified (A1). Not a goal.
+- **The first build without Node needs GitHub to be reachable.** After that,
+  the cached shell is used. A failed download exits 4 and doesn't touch the
+  existing `index.html`.
+- **The shell and the data format could fall out of step.** The shell reads a
+  `format` number from the data, and shows a clear message rather than a
+  broken page when the number doesn't match its own.
 
 ## Phase 2 outline (not designed here)
 
