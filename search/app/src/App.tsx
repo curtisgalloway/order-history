@@ -3,7 +3,8 @@
 
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useDeferredValue, useLayoutEffect, useMemo, useRef, useState } from "react";
-import data from "./generated/data.json";
+// tsc infers a type from the file itself; with no exports its arrays are never[].
+import generated from "./generated/data.json";
 import { ItemRowView, OrderCard } from "./Rows";
 import {
   buildIndex,
@@ -13,8 +14,11 @@ import {
   type Filters,
   type Kind,
 } from "./search";
+import type { Data } from "./types";
 
 type View = "items" | "orders";
+
+const data = generated as Data;
 
 const index = buildIndex(data);
 const storeName = Object.fromEntries(data.stores.map((s) => [s.id, s.name]));
