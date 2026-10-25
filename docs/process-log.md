@@ -62,3 +62,24 @@ Prevention: when 3.10 is supported, pull subscripted values into locals before t
 f-string from the start.
 Fix belongs in: user instructions (Python conventions)
 Status: open
+
+## 2026-10-25T14:22-0700 — instruction not followed: notebook timestamps guessed
+Chapter: [M2](notebook/M2.md)
+What happened: five M2 entries were written with a guessed time (14:40) in the same
+command that read the clock (14:22), instead of reading the clock first.
+Cost: one fix-up edit before anything read the entries.
+Prevention: read `date` in its own call before composing timestamped entries.
+Fix belongs in: skill (lab-notebook, "Timestamps")
+Status: open
+
+## 2026-10-25T14:28-0700 — failed command: zsh does not word-split a command in a variable
+Chapter: [M2](notebook/M2.md)
+What happened: `G="git -C <path>"; $G diff --cached ...` failed with "no such file or
+directory: git -C <path>", leaving an empty diff; the review planner then chose the light
+tier for "0 changed lines".
+Cost: one rerun; a wrong plan would have run one reviewer instead of seven had it not been
+noticed.
+Prevention: spell commands out (the Bash tool runs zsh); and check the diff is non-empty
+before planning a review.
+Fix belongs in: skill (review-swarm, step 1: refuse to plan on an empty diff)
+Status: open

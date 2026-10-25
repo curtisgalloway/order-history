@@ -22,7 +22,10 @@ class StatusTest(support.IsolatedTestCase):
         code, out, err = self.run_cli("status", "--json", "--data-dir", data)
         self.assertEqual(code, 0, err)
         doc = json.loads(out)
-        self.assertEqual(list(doc), ["data_dir", "vendors", "page_built"])
+        self.assertEqual(
+            list(doc), ["data_dir", "vendors", "page_built", "import_running"]
+        )
+        self.assertFalse(doc["import_running"])
         self.assertEqual(doc["data_dir"], data)
         self.assertIsNone(doc["page_built"])
         self.assertEqual(

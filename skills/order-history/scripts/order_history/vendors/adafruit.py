@@ -16,6 +16,7 @@ import csv
 import json
 import os
 import re
+import shutil
 
 from order_history import model
 
@@ -50,6 +51,11 @@ def detect(path):
     except (OSError, UnicodeDecodeError, csv.Error):
         return False
     return HEADER <= {h.strip() for h in header}
+
+
+def install(src, dest):
+    """Copy the CSV into the empty folder dest."""
+    shutil.copyfile(src, os.path.join(dest, ORDERS_CSV))
 
 
 def _text(v):
@@ -92,17 +98,15 @@ def load_items(vendor_dir):
         return json.load(f)
 
 
-def load(vendor_dir):
-    """Orders from <vendor_dir>/current/, with items.json merged in."""
-    fetched = load_items(vendor_dir)
+def read(folder):
+    """Orders from an export folder alone; the export has no item lines."""
     orders = []
-    for r in _export_rows(os.path.join(vendor_dir, "current")):
-        oid = _order_id(r["order_id"])
+    for r in _export_rows(folder):
         discount = model.money(r["coupon"]) or model.money(r["gift_certificate"])
         orders.append(
             model.new_order(
                 ID,
-                oid,
+                _order_id(r["order_id"]),
                 _date(r["date_purchased"]),
                 status=model.status(r["order_status"]),
                 total=model.money(r["total"]),
@@ -113,14 +117,20 @@ def load(vendor_dir):
                     "tax": model.money(r["tax"]),
                     "discount": discount,
                 },
-                items=[
-                    model.new_item(
-                        i["name"], **{k: v for k, v in i.items() if k != "name"}
-                    )
-                    for i in fetched.get(oid, {}).get("items", [])
-                ],
             )
         )
+    return orders
+
+
+def load(vendor_dir):
+    """Orders from <vendor_dir>/current/, with items.json merged in."""
+    fetched = load_items(vendor_dir)
+    orders = read(os.path.join(vendor_dir, "current"))
+    for order in orders:
+        order["items"] = [
+            model.new_item(i["name"], **{k: v for k, v in i.items() if k != "name"})
+            for i in fetched.get(order["id"], {}).get("items", [])
+        ]
     return orders
 
 

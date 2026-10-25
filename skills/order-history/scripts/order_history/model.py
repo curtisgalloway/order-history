@@ -10,6 +10,9 @@ and new_item(); finish() then fills in order totals and sorts.
 
 SENTINELS = {"", "Not Available", "Not Applicable"}
 
+# The name shown for an item whose export row has no product name.
+NO_NAME = "(no product name)"
+
 # Terminal "everything went fine" states get no stamp. Amazon's Authorized is
 # its payment term for an order still in flight.
 STATUS_DISPLAY = {
@@ -80,7 +83,7 @@ def new_order(store, order_id, date, **kw):
 def new_item(name, **kw):
     """One item line of an order."""
     item = {
-        "name": name or "(no product name)",
+        "name": name or NO_NAME,
         "asin": "",
         "qty": "1",
         "unit": "",
