@@ -1,0 +1,23 @@
+{
+  "about": "Query -> expected order IDs, newest first, over tests/fixtures/data. Shared by the Python search and (planned) the page's search.ts.",
+  "cases": [
+    {"query": "solder", "expect": ["111-0000001-0000001"]},
+    {"query": "SOLDER wire", "expect": ["111-0000001-0000001"]},
+    {"query": "tools 2024", "expect": ["111-0000001-0000001"]},
+    {"query": "amazon.co.uk", "expect": ["202-0000003-0000003"]},
+    {"query": "in progress", "expect": ["111-0000002-0000002"]},
+    {"query": "cancelled", "expect": ["111-0000004-0000004"]},
+    {"query": "b000test03", "expect": ["111-0000002-0000002"]},
+    {"query": "digital kindle", "expect": ["D01-0000005-0000005", "D01-0000006-0000006"]},
+    {"query": "physical adafruit", "expect": ["1000002-2000000002", "1000001-2000000001"]},
+    {"query": "items not in export", "expect": ["1000002-2000000002"]},
+    {"query": "9002", "expect": ["1000001-2000000001"]},
+    {"query": "ups ground", "expect": ["1000001-2000000001"]},
+    {"query": "2025", "expect": ["1000002-2000000002", "111-0000002-0000002", "D01-0000005-0000005"]},
+    {"query": "feather jumper", "expect": [], "note": "terms on two different items: no single item matches"},
+    {"query": "physical", "store": "adafruit", "expect": ["1000002-2000000002", "1000001-2000000001"]},
+    {"query": "2025", "kind": "digital", "expect": ["D01-0000005-0000005"]},
+    {"query": "2025", "kind": "physical", "expect": ["1000002-2000000002", "111-0000002-0000002"]},
+    {"query": "zzz", "expect": []}
+  ]
+}
