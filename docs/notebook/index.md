@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Notebook index
 
-Updated: 2026-10-25T14:53-0700
+Updated: 2026-10-25T15:21-0700
 
 A row is stale when its chapter has an entry newer than "indexed through".
 
@@ -43,12 +43,25 @@ Outcome: complete; page shell + `page.py` (cache, local build, release download)
 - Browser tool refuses `file://`; checked over a loopback server instead.
 - Review F1: the tag ruleset doesn't protect release assets; shell integrity is the user's call.
 
+### [M4 — Update](M4.md)
+Entries: 2026-10-25T15:01-0700 through 2026-10-25T15:21-0700
+Outcome: complete; `update` (Adafruit items; Amazon images only with `--amazon-images`), network/clock injected
+- Politeness carried over; port also stops on 403/5xx/network errors instead of caching "no image" (review F1, R1).
+- Exports read under the import lock, lookups under a separate `.update.lock` (review F3).
+- Exit 20/21 keep M2's band meanings; 3 (no email) wins over them; F5 (21 shared with import) declined.
+- M3 F1 resolved: immutable releases on by user decision; design corrected.
+
 ## Threads
-- **Privacy of tracked files:** [design](design.md) — the draft quoted account counts and
-  had to be scrubbed; keep examples generic.
-- **Python 3.10 support:** [M1](M1.md), [M2](M2.md) — `build.py` needs 3.12; the new
-  package and its lint rules keep to 3.10 syntax (f-string quote rule hit again in M2).
-- **Shell trust and release integrity:** [design](design.md), [M3](M3.md) — the design
-  relied on the tag ruleset; M3's review found assets aren't covered.
+- **Privacy of tracked files:** [design](design.md), [M4](M4.md) — the draft quoted account
+  counts and had to be scrubbed; M4's privacy note first listed the private grep patterns.
+  Keep examples generic, describe checks by category.
+- **Python 3.10 support:** [M1](M1.md), [M2](M2.md), [M4](M4.md) — `build.py` needs 3.12; the
+  new package and its lint rules keep to 3.10 syntax (f-string quote rule hit again in M2
+  and M4).
+- **Shell trust and release integrity:** [design](design.md), [M3](M3.md), [M4](M4.md) — the
+  design relied on the tag ruleset; M3's review found assets aren't covered; resolved in M4
+  by the user's choice of immutable releases.
 - **Never deleting data:** [M2](M2.md) — the tool removes only its own `.staging-*`
   folders; rollback, the archive-name check and the failed-rollback note guard the rest.
+- **Exit-code bands:** [M2](M2.md), [M4](M4.md) — 20/21 mean "nothing done" / "partly done"
+  for both import and update; the skill (M5) must give each command's meaning.

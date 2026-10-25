@@ -49,6 +49,9 @@ EXIT_REFUSED = 30  # an unsafe zip member or folder entry
 
 STAGING_PREFIX = ".staging-"
 LOCK_NAME = ".import.lock"
+# Held by update while it fills the caches, so two updates can't both
+# rewrite items.json or images.json. Imports don't touch the caches.
+UPDATE_LOCK_NAME = ".update.lock"
 # Written into <vendor>/ when a rollback fails; imports of that store stop
 # until the user has put the folders right and deleted it.
 RECONCILE_NAME = "IMPORT-FAILED.txt"
@@ -258,19 +261,19 @@ def leftover_staging(vendor_dir):
 
 
 @contextlib.contextmanager
-def _lock(data_dir):
+def _lock(data_dir, name=LOCK_NAME, what="import"):
     """Holds <data>/.import.lock so two imports can't swap at once.
 
     The lock file stays; removing it would race with the next import.
     """
-    fd = os.open(os.path.join(data_dir, LOCK_NAME), os.O_RDWR | os.O_CREAT, 0o600)
+    fd = os.open(os.path.join(data_dir, name), os.O_RDWR | os.O_CREAT, 0o600)
     try:
         if fcntl is not None:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as e:
                 raise StoreError(
-                    "another import is running; try again when it finishes",
+                    f"another {what} is running; try again when it finishes",
                     EXIT_RETRY_FREE,
                 ) from e
         yield
@@ -284,6 +287,11 @@ def import_lock(data_dir):
     Raises StoreError (exit 20) at once if an import holds it.
     """
     return _lock(data_dir)
+
+
+def update_lock(data_dir):
+    """The update lock (<data>/.update.lock); StoreError (exit 20) if held."""
+    return _lock(data_dir, UPDATE_LOCK_NAME, "update")
 
 
 def import_running(data_dir):

@@ -5,7 +5,9 @@ SPDX-License-Identifier: Apache-2.0
 
 # Agent-first order history — Design
 
-Revision: 2026-10-25, approved (page shell published as a release asset, not committed)
+Revision: 2026-10-25, approved (page shell published as a release asset, not committed).
+Corrected in M4: release assets are protected by immutable releases, not the tag
+ruleset (M3 review F1, user decision 2026-10-25).
 
 **Terms** (more in [GLOSSARY.md](../GLOSSARY.md)):
 
@@ -302,7 +304,7 @@ The codes follow the house CLI conventions:
 | 1 | search found nothing |
 | 2 | bad usage, or an unrecognized or ambiguous file |
 | 3 | no data folder, or no export for a vendor |
-| 20/21 | a site throttled before or during an update |
+| 20/21 | a site throttled before or during an update (M4 also: robots.txt disallows or can't be read, lookups failed, or another update is running) |
 | 30 | an older export without `--force`, or a zip-member path refused |
 
 ## Key decisions
@@ -323,8 +325,11 @@ The codes follow the house CLI conventions:
   the user over committing it.
   - The cost: the first build on a machine without Node needs the network
     once, and a change to `web/` reaches users only through a release.
-  - The tag ruleset already set on the repo (no deleting or moving `v*` tags)
-    means a version's shell can't be swapped out under it.
+  - Immutable releases, turned on for the repo by the user's decision
+    (2026-10-25), lock a published release's assets, so a version's shell
+    can't be swapped out under it. The tag ruleset (no deleting or moving
+    `v*` tags) covers only the tags, not release assets; the release workflow
+    publishes draft-first so the lock applies once the shell is attached.
   - Keying the cache by version means a tool update fetches the matching
     shell automatically.
 - **The data folder is a setting, defaulting to `~/Documents/Order History`.**

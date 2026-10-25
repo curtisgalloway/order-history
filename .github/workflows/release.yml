@@ -7,9 +7,10 @@
 # __version__, since that is the URL the tool asks for. The repo's tag
 # ruleset stops v* tags from being moved or deleted, but it does not cover
 # release assets: someone with write access could replace page-shell.html.
-# GitHub's immutable releases lock a published release's assets; so that the
-# setting can be turned on, the release is created as a draft, the shell is
-# attached, and only then is it published.
+# GitHub's immutable releases, turned on for this repo (2026-10-25), lock a
+# published release's assets and its tag. They apply on publishing, so the
+# release is created as a draft, the shell is attached, and only then is it
+# published.
 name: Release
 
 on:

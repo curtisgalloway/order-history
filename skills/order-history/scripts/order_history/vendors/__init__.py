@@ -15,7 +15,9 @@ Each vendor is a module providing:
   load(vendor_dir)      orders from <vendor_dir>/current/ with caches merged
 
 and, optionally, compare(old, new) (vendor findings for the import report, from
-two read() lists) and gaps(vendor_dir, orders) (enrichment gaps for status).
+two read() lists), gaps(vendor_dir, orders) (enrichment gaps for status) and
+enrich(vendor_dir, opts, orders) (fill the vendor's caches for update, given
+read() of current/; see fetching.py).
 Adding a store means adding its module and listing it here; nothing else in
 the core changes.
 """

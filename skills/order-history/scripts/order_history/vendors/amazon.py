@@ -10,14 +10,37 @@ Layout under the vendor folder (<data>/amazon/):
   images.json                                            ASIN -> image cache
 
 Both CSVs have one row per item; rows are grouped into orders by Order ID.
+
+enrich() fills images.json, and runs only with --amazon-images: it scrapes
+amazon.com product pages, which may be against Amazon's conditions of use.
+Without the flag it sends no request to any Amazon host. Its two phases and
+their pacing are those of the script it replaces (search/fetch_images.py,
+removed in M3):
+
+  Phase A: probe the images-na P/<ASIN> CDN endpoint, 8 at a time. It serves a
+           1x1 placeholder GIF (~43 bytes) with HTTP 200 when it has no image,
+           so a hit is told apart by body size. Hit -> {"src": "p"},
+           miss -> {"src": "tbd"} (probed, awaiting phase B).
+  Phase B: for the misses, fetch amazon.com/dp/<ASIN> one at a time,
+           DP_DELAY seconds apart (with +/-25% jitter), and extract the
+           m.media-amazon.com image ID. Hit -> {"src": "i", "id": "<id>"},
+           a 404 or other 4xx (page gone) or a page with no image ->
+           {"src": null}. A captcha, 403, 429 or 503 stops the run, and so
+           (unlike the old script, which recorded them as {"src": null})
+           does any other 5xx or a network error; that ASIN stays "tbd" and
+           the next update continues from the cache.
 """
 
+import concurrent.futures
 import csv
 import json
 import os
+import re
+import urllib.error
+import urllib.request
 import zipfile
 
-from order_history import model, store
+from order_history import fetching, model, store
 
 ID = "amazon"
 NAME = "Amazon"
@@ -27,6 +50,30 @@ SOURCE = "Order History.csv + Digital Content Orders.csv"
 ORDERS_CSV = os.path.join("Your Amazon Orders", "Order History.csv")
 DIGITAL_CSV = os.path.join("Your Amazon Orders", "Digital Content Orders.csv")
 IMAGES_JSON = "images.json"
+
+UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+P_URL = "https://images-na.ssl-images-amazon.com/images/P/{asin}.01._SL160_.jpg"
+DP_URL = "https://www.amazon.com/dp/{asin}"
+PROBE_WORKERS = 8
+PROBE_TIMEOUT = 15
+DP_TIMEOUT = 30
+DP_DELAY = 2.0  # seconds between product pages, before jitter
+# How often a long run saves its progress.
+PROBE_SAVE_EVERY = 250
+DP_SAVE_EVERY = 25
+SKIPPED = "image lookups scrape amazon.com; pass --amazon-images to run them"
+CAPTCHA_MARKERS = (b"validateCaptcha", b"Robot Check", b"To discuss automated access")
+IMG_PATTERNS = (
+    re.compile(rb'"hiRes":"https://m\.media-amazon\.com/images/I/([^".]+)\.'),
+    re.compile(rb'data-old-hires="https://m\.media-amazon\.com/images/I/([^".]+)\.'),
+    re.compile(
+        rb'id="landingImage"[^>]*'
+        rb'src="https://m\.media-amazon\.com/images/I/([^".]+)\.'
+    ),
+)
 
 
 def detect(path):
@@ -169,3 +216,149 @@ def gaps(vendor_dir, orders):
     missing = {i["asin"] for o in orders for i in o["items"] if i["asin"] not in images}
     missing.discard("")
     return {"images_missing": len(missing)}
+
+
+# ---- enrich(): product images ---------------------------------------------
+
+
+def asins_newest_first(orders):
+    """Unique ASINs, newest order first, so partial runs favor recent items."""
+    dated = sorted(
+        ((o["date"], i["asin"]) for o in orders for i in o["items"] if i["asin"]),
+        reverse=True,
+    )
+    seen, ordered = set(), []
+    for _, asin in dated:
+        if asin not in seen:
+            seen.add(asin)
+            ordered.append(asin)
+    return ordered
+
+
+def probe_p(opts, asin):
+    """True if the P/ CDN endpoint has a real image for this ASIN."""
+    req = urllib.request.Request(P_URL.format(asin=asin), headers={"User-Agent": UA})
+    try:
+        return len(opts.urlopen(req, PROBE_TIMEOUT)) > 500
+    except OSError:  # URLError and TimeoutError are OSErrors
+        return False
+
+
+def scrape_dp(opts, asin):
+    """("ok", imageId) | ("none", None) | ("captcha", None) | ("error", why).
+
+    "captcha" is a captcha page, 403, 429 or 503: Amazon is refusing or
+    limiting this client. "none" is a page that is gone (another 4xx) or
+    has no image;
+    "error" is a 5xx other than 503 or a network failure, which says nothing
+    about the image and must not be cached as "none".
+    """
+    req = urllib.request.Request(
+        DP_URL.format(asin=asin),
+        headers={
+            "User-Agent": UA,
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml",
+        },
+    )
+    try:
+        body = opts.urlopen(req, DP_TIMEOUT)
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 429, 503):  # 403: how a blocked client is answered
+            return "captcha", None
+        if e.code >= 500:
+            return "error", f"HTTP {e.code}"
+        return "none", None  # 404 and other refusals
+    except OSError as e:  # URLError, timeouts, http.client errors (http_read)
+        return "error", str(e) or type(e).__name__
+    if any(m in body for m in CAPTCHA_MARKERS):
+        return "captcha", None
+    for pat in IMG_PATTERNS:
+        m = pat.search(body)
+        if m:
+            return "ok", m.group(1).decode()
+    return "none", None
+
+
+def save_images(vendor_dir, cache):
+    """Write images.json atomically."""
+    fetching.write_json(
+        os.path.join(vendor_dir, IMAGES_JSON),
+        cache,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def _awaiting_dp(asins, cache):
+    return [a for a in asins if cache.get(a, {"src": "tbd"})["src"] == "tbd"]
+
+
+def enrich(vendor_dir, opts, orders=None):
+    """Look up product images for ASINs not yet resolved in images.json.
+
+    Does nothing, and sends no request, unless opts.amazon_images. orders
+    is read() of current/ (read here when None). Returns a
+    fetching.new_result() dict.
+    """
+    result = fetching.new_result(ID)
+    if not opts.amazon_images:
+        result["skipped"] = SKIPPED
+        return result
+    if orders is None:
+        orders = read(os.path.join(vendor_dir, "current"))
+    asins = asins_newest_first(orders)
+    cache = load_images(vendor_dir)
+    todo = [a for a in asins if a not in cache]
+    result["pending"] = len(_awaiting_dp(asins, cache))
+    if opts.dry_run or not result["pending"]:
+        return result
+    opts.log(f"amazon: {len(asins)} ASINs, {len(asins) - len(todo)} cached")
+
+    if todo:
+        opts.log(f"amazon: phase A: probing the P/ CDN endpoint for {len(todo)}")
+        done = hits = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=PROBE_WORKERS) as ex:
+            for asin, hit in zip(todo, ex.map(lambda a: probe_p(opts, a), todo)):
+                cache[asin] = {"src": "p"} if hit else {"src": "tbd"}
+                hits += hit
+                done += 1
+                if done % PROBE_SAVE_EVERY == 0:
+                    save_images(vendor_dir, cache)
+                    opts.log(f"  probed {done}/{len(todo)}")
+        result["requests"] += len(todo)
+        result["changed"] += len(todo)
+        save_images(vendor_dir, cache)
+        opts.log(f"  the P/ endpoint serves {hits} of {len(todo)}")
+
+    misses = _awaiting_dp(asins, cache)
+    if misses:
+        opts.log(f"amazon: phase B: scraping {len(misses)} product pages")
+    for scraped, asin in enumerate(misses):
+        status, image_id = scrape_dp(opts, asin)
+        result["requests"] += 1
+        if status == "captcha":
+            message = (
+                f"captcha or throttling after {scraped} pages; stopped "
+                "(run update again later)"
+            )
+            opts.log("  " + message)
+            result["stopped"] = {"reason": "throttled", "message": message}
+            break
+        if status == "error":
+            message = (
+                f"{asin}: {image_id}; stopped after {scraped} pages, nothing "
+                "recorded for it (run update again later)"
+            )
+            opts.log("  " + message)
+            result["stopped"] = {"reason": "unreachable", "message": message}
+            break
+        cache[asin] = {"src": "i", "id": image_id} if status == "ok" else {"src": None}
+        result["changed"] += 1
+        if (scraped + 1) % DP_SAVE_EVERY == 0:
+            save_images(vendor_dir, cache)
+            opts.log(f"  scraped {scraped + 1}/{len(misses)}")
+        opts.sleep(DP_DELAY * (0.75 + opts.random() * 0.5))
+    save_images(vendor_dir, cache)
+    result["pending"] = len(_awaiting_dp(asins, cache))
+    return result
