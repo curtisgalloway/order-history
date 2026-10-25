@@ -1,0 +1,38 @@
+<!--
+SPDX-FileCopyrightText: 2026 Curtis Galloway
+SPDX-License-Identifier: Apache-2.0
+-->
+
+# Glossary
+
+Plain-language meanings of the terms used in this repo.
+
+**ASIN** — Amazon Standard Identification Number: Amazon's ten-character
+product ID (for books it is usually the ISBN-10). It appears in Amazon's
+export and builds product-page and image URLs.
+
+**DSAR** — Data Subject Access Request: a request for the personal data a
+company holds on you. Amazon's version is the *Request My Data* page; the
+result is a zip of folders such as `Your Amazon Orders/`.
+
+**Export** — the file or files a store lets you download containing your own
+order history. Each store's export has its own columns and quirks.
+
+**Item** — one product line in an order (Amazon writes one CSV row per item).
+Adafruit's export has no items, only order totals.
+
+**Loader** — a function in `search/build.py` that reads one store's export and
+returns orders in the shared shape the page understands.
+
+**Order view / Items view** — the two ways the page lists results: one card
+per order with its items inside, or one row per item.
+
+**Single-file build** — the page is built so its JavaScript, styles and data
+are all inside one `index.html`, which therefore opens from disk with no web
+server (done by `vite-plugin-singlefile`).
+
+**Virtualized list** — the page renders only the rows currently on screen
+and swaps them as you scroll, so thousands of results scroll smoothly.
+
+**Vite** — the build tool that turns the TypeScript/React source in
+`search/app/` into the finished page.

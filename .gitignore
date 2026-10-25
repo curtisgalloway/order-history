@@ -1,0 +1,22 @@
+# Personal data exports: never tracked.
+/Your Amazon Orders/
+/Your Returns & Refunds/
+/Additional Data/
+/Adafruit/
+
+# Derived from the exports (purchase lists, product image lookups).
+/search/index.html
+/search/images.json
+/search/app/src/generated/
+/search/app/dist/
+
+# Tooling
+/search/app/node_modules/
+.DS_Store
+__pycache__/
+
+# Facts about this checkout's exports (account, dates, counts).
+/LOCAL.md
+
+# Earlier exports kept after replacing them with newer ones.
+/archive/
