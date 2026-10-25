@@ -5,7 +5,11 @@
 
 Data goes to stdout and messages to stderr. --json prints one JSON document.
 
-Exit codes: 0 ok; 1 nothing found; 2 bad usage; 3 no data folder (run init).
+Exit codes: 0 ok; 1 nothing found; 2 bad usage, or a file no store (or several)
+recognizes; 3 no data folder (run init); 20 import changed nothing (another
+import is running, or a failure was rolled back), retry; 21 an import's
+rollback failed, check the folders named; 30 an older export without --force,
+or an unsafe zip member or folder entry.
 """
 
 import argparse
@@ -15,12 +19,13 @@ import os
 import re
 import sys
 
-from order_history import __version__, config, model, search, vendors
+from order_history import __version__, config, model, search, store, vendors
 
 EXIT_OK = 0
 EXIT_EMPTY = 1
 EXIT_USAGE = 2
 EXIT_NO_DATA = 3
+EXIT_REFUSED = store.EXIT_REFUSED
 
 
 class CliError(Exception):
@@ -104,19 +109,26 @@ def cmd_init(args, registry):
 def cmd_status(args, registry):
     """Per vendor: as-of date, counts and enrichment gaps; and the page."""
     data_dir = _data_dir(args)
+    running = store.import_running(data_dir)
     report = []
     for vendor, orders in _load_all(data_dir, registry):
         entry = {"id": vendor.ID, "name": vendor.NAME}
+        vendor_dir = os.path.join(data_dir, vendor.ID)
         if orders is None:
             entry["status"] = "missing"
         else:
-            vendor_dir = os.path.join(data_dir, vendor.ID)
             entry["status"] = "ok"
             entry["as_of"] = vendor.as_of(os.path.join(vendor_dir, "current"))
             entry["orders"] = len(orders)
             entry["items"] = sum(len(o["items"]) for o in orders)
             if hasattr(vendor, "gaps"):
                 entry["gaps"] = vendor.gaps(vendor_dir, orders)
+        leftover = store.leftover_staging(vendor_dir)
+        if leftover and not running:  # while an import runs, its staging is live
+            entry["leftover_staging"] = leftover
+        marker = store.reconcile_marker(vendor_dir)
+        if marker:
+            entry["import_failed"] = marker
         report.append(entry)
     page = os.path.join(data_dir, "index.html")
     built = (
@@ -127,10 +139,31 @@ def cmd_status(args, registry):
         else None
     )
     if args.json:
-        _emit_json({"data_dir": data_dir, "vendors": report, "page_built": built})
+        _emit_json(
+            {
+                "data_dir": data_dir,
+                "vendors": report,
+                "page_built": built,
+                "import_running": running,
+            }
+        )
         return EXIT_OK
     print(f"data folder: {data_dir}")
+    if running:
+        print("an import is running")
     for e in report:
+        if e.get("import_failed"):
+            _out(
+                e["id"]
+                + ": an import failed and couldn't undo itself; see "
+                + e["import_failed"]
+            )
+        if e.get("leftover_staging"):
+            n = len(e["leftover_staging"])
+            _out(
+                e["id"] + f": {n} staging folder(s) left by an interrupted import; "
+                "the next import of this store removes them"
+            )
         if e["status"] == "missing":
             print(e["id"] + ": missing (no export imported)")
             continue
@@ -227,6 +260,60 @@ def cmd_order(args, registry):
     return EXIT_OK
 
 
+def _import_text(report):
+    """The short text summary of an import report; --json has the lists."""
+    vid, as_of = report["store"], report["as_of"]
+    new_date, old_date = as_of["new"] or "undated", as_of["old"]
+    was = f"; current one as of {old_date}" if old_date else ""
+    head = {
+        "imported": "imported",
+        "dry_run": "dry run, nothing changed:",
+        "refused_older": "not imported:",
+    }[report["action"]]
+    _out(f"{vid}: {head} export as of {new_date}{was}")
+    for key in ("orders", "items"):
+        part = report[key]
+        n_added, n_removed = len(part["added"]), len(part["removed"])
+        after, before = part["after"], part["before"]
+        _out(
+            f"  {key}: {after} (was {before}), " f"{n_added} added, {n_removed} removed"
+        )
+    for name, entries in report["findings"].items():
+        if entries:
+            _out("  " + name.replace("_", " ") + f": {len(entries)}")
+    archived = report["archived_to"]
+    if archived:
+        _out(f"  previous export archived to {archived}")
+    for name in report["removed_staging"]:
+        _out(f"  removed {name}, left by an interrupted import")
+
+
+def cmd_import(args, registry):
+    """Install an export (zip, CSV or folder), archiving the current one."""
+    data_dir = _data_dir(args)
+    try:
+        report = store.import_export(
+            data_dir, args.path, registry, dry_run=args.dry_run, force=args.force
+        )
+    except store.StoreError as e:
+        raise CliError(str(e), e.code) from e
+    except OSError as e:
+        # Setting up the import (the vendor folder, the lock, staging) failed
+        # before the current export was touched.
+        raise CliError(f"import failed: {e}; nothing changed", EXIT_USAGE) from e
+    if args.json:
+        _emit_json(report)
+    else:
+        _import_text(report)
+    if report["action"] == "refused_older":
+        _log(
+            f"order-history: {args.path} is older than the current export; "
+            "pass --force to import it anyway"
+        )
+        return EXIT_REFUSED
+    return EXIT_OK
+
+
 def build_parser():
     """The argument parser; --data-dir and --json work before or after the command."""
     common = argparse.ArgumentParser(add_help=False)
@@ -260,6 +347,21 @@ def build_parser():
     p.add_argument("id", help="order ID")
     p.add_argument("--store", help="store ID, when the ID is in several stores")
     p.set_defaults(func=cmd_order)
+    p = sub.add_parser(
+        "import",
+        parents=[common],
+        help="install a downloaded export",
+        description="Install a store's export (a zip, a CSV or an unzipped folder),"
+        " archiving the current one, and report what changed.",
+    )
+    p.add_argument("path", help="the export: a zip, a CSV or a folder")
+    p.add_argument(
+        "--dry-run", action="store_true", help="report the changes; change nothing"
+    )
+    p.add_argument(
+        "--force", action="store_true", help="import an export older than the current"
+    )
+    p.set_defaults(func=cmd_import)
     return parser
 
 

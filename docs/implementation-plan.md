@@ -53,7 +53,7 @@ counts (AGENTS.md, "Before committing").
 | ID | Outcome | Dependencies | Status |
 |----|---------|--------------|--------|
 | M1 | Package, data folder, vendors load; `init`/`status`/`search`/`order` | — | complete |
-| M2 | `import`: detect, stage, compare, archive, swap, rollback | M1 | pending |
+| M2 | `import`: detect, stage, compare, archive, swap, rollback | M1 | complete |
 | M3 | Node-free page; `search/` removed; CI and release workflow | M2 | pending |
 | M4 | `update`: Adafruit items, opt-in Amazon images | M3 | pending |
 | M5 | Skill, vendor docs, `--skill`, plugin manifest, packaging, docs | M4 | pending |
@@ -97,71 +97,26 @@ Open limitations:
 
 ## M2 — Import
 
-**Design coverage:** R1 (registration), R3, R4
+**Outcome:** `order-history import PATH [--dry-run] [--force] [--json]` for both vendors
+(Amazon from a zip or folder, Adafruit from its CSV): detection, staging, the comparison
+report (orders and items added and removed; Amazon titles renamed and blanked), archiving
+to `archive/<as_of>/`, the swap with rollback, zip and folder safety checks, an import
+lock, and a failed-rollback note that stops later imports. 98 unit tests.
 
-**Dependencies:** M1
-
-**In scope:**
-
-- `detect` and `install` for both vendors;
-- `store.py` for staging, archiving, swapping and rolling back;
-- the generic order and item comparison, plus Amazon's renamed and blanked
-  digital titles;
-- `import` with `--dry-run`, `--force` and `--json`;
-- the zip-member safety check;
-- the test-only vendor.
-
-**Out of scope:** rebuilding the page after import (a no-op hook until M3).
-
-### Implementation steps
-
-1. `detect`:
-   - Amazon: a zip or folder containing `Your Amazon Orders/Order History.csv`.
-   - Adafruit: a CSV whose header matches the export's columns.
-
-   Detection reads contents only.
-2. `install` copies a folder, or extracts a zip into an empty staging folder.
-   Before extracting, every member is checked: an absolute path, a `..`
-   component or a symlink makes the import exit 30.
-3. `store.import_export()` runs the design's import flow, steps 1–7.
-   Rollback restores `current/` if a step from 5 on fails. A leftover
-   `.staging-*` folder is cleaned up at the start of the next import and
-   reported by `status`.
-4. `compare(old, new)` gives orders and items added and removed, plus each
-   vendor's own findings. Text output is a short summary; `--json` gives the
-   full lists.
-5. Register a test vendor inside a test to show R1: no core edits.
-
-### Acceptance criteria
-
-- [ ] Importing an Amazon fixture zip into an empty data folder installs it as
-  `current/` and reports every order as added.
-- [ ] Importing a newer fixture archives the old one to `archive/<as_of>/` and
-  reports the exact differences, including a renamed digital title.
-- [ ] `--dry-run` reports and leaves the folder byte-for-byte unchanged.
-- [ ] An older export exits 30 without `--force`, and imports with it.
-- [ ] A file no vendor claims, or that two claim, exits 2 and changes nothing.
-- [ ] A zip with a `../x` member exits 30, and nothing is written outside staging.
-- [ ] A failure injected after the archive step leaves the previous
-  `current/` in place.
-- [ ] Both vendors work from a zip, a CSV and a directory, wherever the vendor
-  supports that format.
-
-### Testing and review
-
-- **Tests:** each criterion above, built from fixture zips made in `setUp`.
-- **Review focus:** filesystem safety (the rename order, rollback, extracting
-  zips), and that an import never deletes anything.
-
-### Session sizing
-
-Start from the design's "Import flow" section and M1's vendor modules. The
-risk is in edge cases of the swap and rollback. Split point if it grows: land
-detect and install with `--dry-run` first, then the swap.
+**Design coverage:** R1 (registration), R3, R4. **Dependencies:** M1.
 
 ### Evidence and findings
 
-Status: pending. Evidence: [M2](evidence/M2.md). Notebook: [M2](notebook/M2.md).
+Status: complete. Evidence: [M2](evidence/M2.md) (full milestone definition, checks and
+review). Notebook: [M2](notebook/M2.md).
+
+Open limitations:
+
+- The rebuild after import is a no-op hook (`rebuild=`) until M3 plugs in `page.build()`.
+- Adafruit reports always show 0 items: its export has no item lines (M4 fills
+  `items.json`).
+- Exit codes 20 and 21 gained import meanings (see the evidence file); the design's
+  exit-code table should list them when M5 rewrites the docs.
 
 ## M3 — Node-free page and retiring `search/`
 
@@ -414,8 +369,18 @@ Status: pending. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
 - Run `search_cases.json` against `web/src/search.ts` in the `page` job, using
   Node, so the two search implementations can't drift (a design risk). Small;
   can be added to M3 if there's room.
-- `status` parses each export twice (`load`, then `as_of`). Harmless at today's sizes
-  (M1 perf review); fold `as_of` into the loaded orders if it ever shows.
+- `status` parses each export twice (`load`, then `as_of`), and so does `import` for each
+  side (`read`, then `as_of`; M2 review F10). Harmless at today's sizes; fold `as_of` into
+  the loaded orders if it ever shows.
+- R10 / M6: importing a folder copies the whole folder, and the in-checkout Amazon export
+  sits at the checkout root beside the code, `.git` and `archive/`. M6's migration steps
+  must gather the export folders into their own folder first (or import the original
+  zip). Found in M2.
+- Zip extraction has no cap on total size or member count (M2 review F2, declined for
+  now). If a cap is wanted, set it from a real export's size, since Amazon's run to
+  gigabytes with photos and invoices.
+- Add exit codes 20/21 (import busy or rolled back / rollback failed) to the design's
+  exit-code table and the skill (M5).
 - The CLI has no equivalent of the page's Orders-view search (terms spread across an
   order's items). Add `search --orders` if an agent needs it.
 - Phase 2: a download flow for each vendor, and `add --provisional` from order
@@ -423,19 +388,20 @@ Status: pending. Evidence: [M6](evidence/M6.md). Notebook: [M6](notebook/M6.md).
 
 ## Next session
 
-- **Current milestone:** M1 complete (checkpoint commit `plan: M1 — Package, data
-  folder, and read-only commands` on branch `m1-package`). M2 is next.
-- **Completed work:** design and plan merged to `main` in PR #2 (`a72b900`). M1 is
-  committed locally on `m1-package`. Pushing it and opening and merging its pull request
-  need the user's go-ahead.
+- **Current milestone:** M2 complete (checkpoint commit `plan: M2 — Import` on branch
+  `m2-import`). M3 is next.
+- **Completed work:** M1 merged in PR #3 (`630d459`). M2 is committed locally on
+  `m2-import`; pushing it and opening and merging its pull request are the orchestrator's
+  (with the user's go-ahead).
 - **Uncommitted state:** none for the milestone. `.no-pitch` (made by the user for a local
   pre-write hook) is gitignored and stays untracked.
-- **Decisions pending:** none for M2.
+- **Decisions pending:** none for M3.
 - **Context boundary:** normal completion.
-- **Resume action:** after M1 merges, create `m2-import` from an up-to-date `origin/main`
-  and begin M2.
+- **Resume action:** after M2 merges, create `m3-page` from an up-to-date `origin/main`
+  and begin M3. `import` calls the `rebuild=` hook of `store.import_export()` after the
+  swap; a failure there already rolls back.
 - **Read first:**
-  - [design](design.md), "Import flow" and R3/R4;
-  - this plan's M2 section;
+  - [design](design.md), "Page" and R7;
+  - this plan's M3 section;
   - [notebook index](notebook/index.md);
-  - `skills/order-history/scripts/order_history/vendors/` and `cli.py`.
+  - `search/app/`, `search/build.py` and `order_history/store.py` (`import_export`).

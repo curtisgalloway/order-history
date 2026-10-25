@@ -17,7 +17,7 @@ import json
 import os
 import zipfile
 
-from order_history import model
+from order_history import model, store
 
 ID = "amazon"
 NAME = "Amazon"
@@ -35,6 +35,14 @@ def detect(path):
         with zipfile.ZipFile(path) as z:
             return "Your Amazon Orders/Order History.csv" in z.namelist()
     return False
+
+
+def install(src, dest):
+    """Unpack a zip, or copy a folder, into the empty folder dest."""
+    if os.path.isdir(src):
+        store.copy_tree(src, dest)
+    else:
+        store.extract_zip(src, dest)
 
 
 def _rows(path, digital):
@@ -88,7 +96,8 @@ def _rows(path, digital):
     return list(orders.values())
 
 
-def _export_orders(folder):
+def read(folder):
+    """Orders from an export folder alone, without the image cache."""
     orders = []
     for rel, digital in ((ORDERS_CSV, False), (DIGITAL_CSV, True)):
         path = os.path.join(folder, rel)
@@ -99,7 +108,7 @@ def _export_orders(folder):
 
 def as_of(folder):
     """The newest order date (YYYY-MM-DD) in an export folder, or ""."""
-    return max((o["date"] for o in _export_orders(folder)), default="")
+    return max((o["date"] for o in read(folder)), default="")
 
 
 def load_images(vendor_dir):
@@ -113,7 +122,7 @@ def load_images(vendor_dir):
 
 def load(vendor_dir):
     """Orders from <vendor_dir>/current/, with images.json merged in."""
-    orders = _export_orders(os.path.join(vendor_dir, "current"))
+    orders = read(os.path.join(vendor_dir, "current"))
     images = load_images(vendor_dir)
     for order in orders:
         for item in order["items"]:
@@ -124,6 +133,32 @@ def load(vendor_dir):
                 # Known miss on the P/ endpoint: show the placeholder directly.
                 item["noImage"] = True
     return orders
+
+
+def compare(old, new):
+    """Item names that changed between two exports (lists from read()).
+
+    Newer exports have renamed some digital titles and blanked others to
+    "Not Applicable". Items are matched by order ID and ASIN.
+    """
+    old_names = _names_by_asin(old)
+    renamed, blanked = [], []
+    for (order_id, asin), names in sorted(_names_by_asin(new).items()):
+        for before, after in zip(old_names.get((order_id, asin), []), names):
+            if before == after:
+                continue
+            entry = {"order": order_id, "asin": asin, "old": before, "new": after}
+            (blanked if after == model.NO_NAME else renamed).append(entry)
+    return {"titles_renamed": renamed, "titles_blanked": blanked}
+
+
+def _names_by_asin(orders):
+    names = {}
+    for order in orders:
+        for item in order["items"]:
+            if item["asin"]:
+                names.setdefault((order["id"], item["asin"]), []).append(item["name"])
+    return names
 
 
 def gaps(vendor_dir, orders):
