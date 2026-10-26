@@ -402,6 +402,9 @@ The skill gives the same codes per command (M5).
 
 ## Phase 2 outline (not designed here)
 
+Catching up between exports is now designed in
+[design-order-pages.md](design-order-pages.md), which replaces the second bullet below.
+
 - Each vendor's `.md` gains a download flow: the steps for the agent's
   browser tool to request or download the export in your signed-in session.
   It asks before every submit and download, and never enters passwords or

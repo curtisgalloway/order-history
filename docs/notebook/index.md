@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Notebook index
 
-Updated: 2026-10-25T16:21-0700
+Updated: 2026-10-25T21:56-0700
 
 A row is stale when its chapter has an entry newer than "indexed through".
 
@@ -66,6 +66,13 @@ Outcome: complete; data migrated with matching counts, `v0.1.0` released (shell 
 - Cold start found five skill gaps (substring noise, `status` shape, undocumented fields, returns, PATH fallback); all fixed.
 - Browser tool still refuses `file://`; loopback check, then the user opened it from disk.
 - Review F4: a real export date slipped into the notebook; the privacy grep had no date patterns.
+
+### [design-order-pages — Catching up from order pages](design-order-pages.md)
+Entries: 2026-10-25T21:40-0700 through 2026-10-25T21:56-0700
+Outcome: design approved; M7–M8 planned
+- Order pages opened in the agent's tab with no sign-in; `data-component` hooks; quantity is an image badge.
+- User: saved orders look the same; run only when asked; suggest a refresh once past 30 days.
+- Builder check: no `summary` on saved orders, images merged in the Amazon module, known IDs via `order`.
 
 ## Threads
 - **Privacy of tracked files:** [design](design.md), [M4](M4.md) — the draft quoted account
