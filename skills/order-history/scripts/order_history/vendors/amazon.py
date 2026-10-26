@@ -31,6 +31,7 @@ removed in M3):
            the next update continues from the cache.
 """
 
+import collections
 import concurrent.futures
 import csv
 import json
@@ -188,17 +189,38 @@ def compare(old, new):
     """Item names that changed between two exports (lists from read()).
 
     Newer exports have renamed some digital titles and blanked others to
-    "Not Applicable". Items are matched by order ID and ASIN.
+    "Not Applicable". Items are matched by order ID and ASIN. Several lines of
+    one order can share an ASIN and come back in another order, so a name found
+    on both sides is unchanged wherever it sits; only the names left over on
+    each side are paired, in export order.
     """
     old_names = _names_by_asin(old)
     renamed, blanked = [], []
     for (order_id, asin), names in sorted(_names_by_asin(new).items()):
-        for before, after in zip(old_names.get((order_id, asin), []), names):
-            if before == after:
-                continue
+        before_left, after_left = _unmatched(old_names.get((order_id, asin), []), names)
+        for before, after in zip(before_left, after_left):
             entry = {"order": order_id, "asin": asin, "old": before, "new": after}
             (blanked if after == model.NO_NAME else renamed).append(entry)
     return {"titles_renamed": renamed, "titles_blanked": blanked}
+
+
+def _unmatched(old, new):
+    """The names in `old` and in `new` that the other side lacks, counting repeats."""
+    remaining = collections.Counter(new)
+    old_left = []
+    for name in old:
+        if remaining[name]:
+            remaining[name] -= 1
+        else:
+            old_left.append(name)
+    taken = collections.Counter(old) - collections.Counter(old_left)
+    new_left = []
+    for name in new:
+        if taken[name]:
+            taken[name] -= 1
+        else:
+            new_left.append(name)
+    return old_left, new_left
 
 
 def _names_by_asin(orders):

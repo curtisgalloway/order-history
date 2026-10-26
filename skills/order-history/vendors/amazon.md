@@ -15,8 +15,63 @@ export, a zip of folders of CSV files. **ASIN** is Amazon's ten-character produc
 
 On amazon.com, the user opens the *Request My Data* page (signed in; Amazon's help pages
 link to it), asks for **Your Orders** (or everything), and confirms the request by email.
-A download link arrives by email, usually after a few days. The download link needs the user's own login: let them fetch it, then import the
-zip as it is (`order-history import <zip>`), with no need to unzip it.
+A download link arrives by email. Amazon says it can take up to a month; in practice it
+has come within an hour of confirming. **The export can miss the newest orders:**
+it is built from a snapshot taken some time before the zip's timestamp (an order placed two
+minutes before the zip was built was not in it; how far back the snapshot can be is not
+known). An export with no new orders after a very recent purchase is not a failed import;
+tell the user, and suggest a new request later if they need that order. The download page needs the user's own login: let
+them fetch the zip, then import it as it is (`order-history import <zip>`), with no need
+to unzip it.
+
+### With a browser
+
+**Is a new export worth it?** With read access to the user's email, check first: find
+Amazon's order confirmations (sender `auto-confirm@amazon.com`) dated after the current
+export's `as_of` (from `order-history status --json`). Read only their dates, not their
+bodies; the bodies hold order details the question doesn't need. If there are none, the
+current export already has every order: say so, and suggest a new export only if the user
+wants something else from it (a returned or cancelled order's new status, say). If there
+are some, say how many and how recent, and offer the steps below.
+
+When you can drive the user's browser (Claude in Chrome, or any tool that works in the
+user's own signed-in browser) you can do the navigating and waiting. Amazon makes the user
+**sign in again on each link opened from its emails**, so this can't run unattended: you
+stop and ask the user at each sign-in. Never type a password, a one-time code or any other
+credential, and leave the request's own submit and confirm steps to the user.
+
+1. Open `https://www.amazon.com/hz/privacy-central/data-requests/create.html?data-category=orders`
+   in a tab you can read. The `data-category=orders` parameter selects *Your Orders*. Ask
+   the user to submit the request there. The page then reads "You're almost done": a
+   confirmation link has gone to their email and is valid for 5 days.
+2. **Without access to the user's email, stop here.** Tell the user what comes next:
+   confirm the request from the email, wait for a second email saying the data is ready,
+   download `Your Orders.zip` from its link, and give you the zip's path. Then import it
+   as below.
+3. With read access to their email (for example a Gmail connector), find the
+   confirmation: sender `dsar-request@amazon.com`, subject "Your Data Request
+   Confirmation". Its link is `…/data-requests/confirm.html?requestId=<id>&signature=…`;
+   note the `requestId`. Ask the user to open that link in the tab you can read and sign
+   in. Loading the page confirms the request (there is no button), and the page then reads
+   "We've received and are processing your request".
+4. Wait for the completion email: same sender, subject "Your Data Request", with a
+   "Download Data" link to `…/data-requests/view.html?requestID=<id>` (note `ID` in
+   capitals there) that is valid for 90 days. Check every 5 minutes, for up to 60 minutes;
+   if it hasn't come by then, stop and tell the user to say when it arrives. **Match on the
+   request ID, not the email thread:** later emails join the thread of earlier ones, and a
+   thread search can list only the thread's first email, so read the whole thread and take
+   the newest email whose link holds the same ID.
+5. Ask the user to open the download link in the tab and sign in. The page ("Download your
+   Amazon data") lists `Your Orders.zip` and `FileDescriptions.csv`, each with a
+   "Download" link to `…/data-requests/download.html?…&filename=Your+Orders.zip&id=<id>`.
+   Download the zip. The browser saves it in the user's downloads folder, adding ` (2)`,
+   ` (3)` and so on to the name when an older copy is there, so take the newest
+   `Your Orders*.zip` modified after the download started.
+6. Import it: `order-history import <zip> --dry-run --json`, report the changes, and run
+   the real import when the user agrees (see SKILL.md's "Importing an export").
+7. With email access, check the result the same way: an order confirmation dated after
+   the new export's `as_of` is an order the export missed (it can miss one placed minutes
+   before it was built). Tell the user, and suggest another request later if they want it.
 
 The export is cumulative: a newer one holds every earlier order, so it replaces the
 current one. `import` archives the old one under `amazon/archive/<date>/`, and its report

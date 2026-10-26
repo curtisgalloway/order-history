@@ -9,7 +9,7 @@ import unittest
 import zipfile
 
 import support
-from order_history import vendors
+from order_history import model, vendors
 from order_history.vendors import adafruit, amazon
 
 AMAZON = os.path.join(support.FIXTURE_DATA, "amazon")
@@ -95,6 +95,49 @@ class AmazonTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(amazon.load(tmp), [])
             self.assertEqual(amazon.as_of(tmp), "")
+
+
+def _order(order_id, *items):
+    return {"id": order_id, "items": [{"asin": a, "name": n} for a, n in items]}
+
+
+class AmazonCompareTest(unittest.TestCase):
+    """Title changes between two exports, matched by order ID and ASIN."""
+
+    def test_rename_and_blank(self):
+        old = [_order("111-0000001-0000001", ("B01", "Old title"), ("B02", "Ebook"))]
+        # read() turns a blanked "Not Applicable" title into model.NO_NAME.
+        new = [
+            _order("111-0000001-0000001", ("B01", "New title"), ("B02", model.NO_NAME))
+        ]
+        found = amazon.compare(old, new)
+        self.assertEqual(
+            [(f["old"], f["new"]) for f in found["titles_renamed"]],
+            [("Old title", "New title")],
+        )
+        self.assertEqual(
+            [(f["old"], f["new"]) for f in found["titles_blanked"]],
+            [("Ebook", model.NO_NAME)],
+        )
+
+    def test_lines_sharing_an_asin_in_a_new_order_are_not_renames(self):
+        # Several lines of one order can share an ASIN; a newer export may list
+        # them in another order. That is not a rename.
+        names = ["Cable", "Charger", "Case"]
+        old = [_order("111-0000001-0000001", *(("B03", n) for n in names))]
+        new = [_order("111-0000001-0000001", *(("B03", n) for n in reversed(names)))]
+        self.assertEqual(
+            amazon.compare(old, new), {"titles_renamed": [], "titles_blanked": []}
+        )
+
+    def test_one_changed_line_among_lines_sharing_an_asin(self):
+        old = [_order("111-0000001-0000001", ("B03", "Cable"), ("B03", "Charger"))]
+        new = [_order("111-0000001-0000001", ("B03", "Charger"), ("B03", "Cable, 2 m"))]
+        found = amazon.compare(old, new)
+        self.assertEqual(
+            [(f["old"], f["new"]) for f in found["titles_renamed"]],
+            [("Cable", "Cable, 2 m")],
+        )
 
 
 class AdafruitTest(unittest.TestCase):

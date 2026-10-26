@@ -1,6 +1,6 @@
 ---
 name: order-history
-description: Search and maintain the user's own purchase history from the order exports that stores let them download (Amazon's "Request My Data" zip, Adafruit's order-history CSV), through the order-history command-line tool. Use when the user asks when or where they bought something, what an order contained or cost, wants a store export imported ("import this"), wants the local order search page rebuilt, or wants missing item lists or product images filled in.
+description: Search and maintain the user's own purchase history from the order exports that stores let them download (Amazon's "Request My Data" zip, Adafruit's order-history CSV), through the order-history command-line tool. Use when the user asks when or where they bought something, what an order contained or cost, wants a store export imported ("import this") or a new Amazon export requested and downloaded, wants the local order search page rebuilt, or wants missing item lists or product images filled in.
 ---
 
 <!--
@@ -68,6 +68,10 @@ order-history init                       # or: order-history init --data-dir PAT
 `~/.config/order-history/config.json`. The folder is chosen by, in order: `--data-dir`,
 `$ORDER_HISTORY_DIR`, that config file, the default. Then ask the user to download an
 export (see `vendors/<store>.md`) and import it.
+
+For Amazon, when you can drive the user's own signed-in browser, you can also do the
+requesting, waiting and downloading with them: `vendors/amazon.md`, "With a browser". The
+user still signs in at each step, and you never type a credential.
 
 ## Importing an export
 
