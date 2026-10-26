@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Notebook index
 
-Updated: 2026-10-25T21:56-0700
+Updated: 2026-10-25T22:20-0700
 
 A row is stale when its chapter has an entry newer than "indexed through".
 
@@ -74,6 +74,14 @@ Outcome: design approved; M7–M8 planned
 - User: saved orders look the same; run only when asked; suggest a refresh once past 30 days.
 - Builder check: no `summary` on saved orders, images merged in the Amazon module, known IDs via `order`.
 
+### [M7 — Saved orders: `add`, merging, pruning](M7.md)
+Entries: 2026-10-25T22:03-0700 through 2026-10-25T22:20-0700
+Outcome: complete; `add`, `order-pages.json` (`saved.py`), merged in `amazon.load`, pruned by import, `status` `checked`/`stale`
+- `checked` uses `current/`'s mtime as the import time (a rename keeps a folder's mtime); no marker file.
+- Review F1: a damaged saved file rolled back every import; the import's rebuild now loads tolerantly.
+- Review F5: `load` reads the saved file before the export, so a read racing an import can't lose an order.
+- Recheck N1: the file check needs only id, date and item names; other fields are filled on read.
+
 ## Threads
 - **Privacy of tracked files:** [design](design.md), [M4](M4.md) — the draft quoted account
   counts and had to be scrubbed; M4's privacy note first listed the private grep patterns.
@@ -87,6 +95,8 @@ Outcome: design approved; M7–M8 planned
   by the user's choice of immutable releases.
 - **Never deleting data:** [M2](M2.md) — the tool removes only its own `.staging-*`
   folders; rollback, the archive-name check and the failed-rollback note guard the rest.
+  [M7](M7.md): `order-pages.json` is never overwritten when unreadable, pruned only after a
+  successful swap, and can't block an import.
 - **Exit-code bands:** [M2](M2.md), [M4](M4.md), [M5](M5.md) — 20/21 mean "nothing done" /
   "partly done" for both import and update; M5's skill and the design give each command's
   meaning.

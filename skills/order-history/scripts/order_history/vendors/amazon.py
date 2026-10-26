@@ -8,8 +8,13 @@ Layout under the vendor folder (<data>/amazon/):
   current/Your Amazon Orders/Order History.csv           physical orders
   current/Your Amazon Orders/Digital Content Orders.csv  digital orders
   images.json                                            ASIN -> image cache
+  order-pages.json                                       saved orders (saved.py)
 
 Both CSVs have one row per item; rows are grouped into orders by Order ID.
+
+Amazon keeps saved orders (SAVED_ORDERS): orders the agent read from the
+signed-in order pages and passed to `order-history add`. load() shows the ones
+the export lacks, and enrich() looks up their images like any other.
 
 enrich() fills images.json, and runs only with --amazon-images: it scrapes
 amazon.com product pages, which may be against Amazon's conditions of use.
@@ -41,12 +46,14 @@ import urllib.error
 import urllib.request
 import zipfile
 
-from order_history import fetching, model, store
+from order_history import fetching, model, saved, store
 
 ID = "amazon"
 NAME = "Amazon"
 # Shown in the page footer.
 SOURCE = "Order History.csv + Digital Content Orders.csv"
+# Orders from the order pages are kept until an export has them (saved.py).
+SAVED_ORDERS = True
 
 ORDERS_CSV = os.path.join("Your Amazon Orders", "Order History.csv")
 DIGITAL_CSV = os.path.join("Your Amazon Orders", "Digital Content Orders.csv")
@@ -58,6 +65,10 @@ UA = (
 )
 P_URL = "https://images-na.ssl-images-amazon.com/images/P/{asin}.01._SL160_.jpg"
 DP_URL = "https://www.amazon.com/dp/{asin}"
+ORDER_URL = "https://www.amazon.com/gp/your-account/order-details?orderID={order_id}"
+# What a saved order's ID and ASINs must look like, since both go into links.
+ORDER_ID = re.compile(r"[0-9A-Z]{3}-\d{7}-\d{7}")
+ASIN = re.compile(r"[0-9A-Z]{10}")
 PROBE_WORKERS = 8
 PROBE_TIMEOUT = 15
 DP_TIMEOUT = 30
@@ -123,12 +134,7 @@ def _rows(path, digital):
                     currency=cur,
                     digital=digital,
                     site=site,
-                    url=(
-                        ""
-                        if digital or not oid
-                        else "https://www.amazon.com/gp/your-account/order-details"
-                        f"?orderID={oid}"
-                    ),
+                    url="" if digital or not oid else ORDER_URL.format(order_id=oid),
                 )
             asin = model.clean(r["ASIN"])
             order["items"].append(
@@ -138,7 +144,7 @@ def _rows(path, digital):
                     qty=qty or "1",
                     unit=unit,
                     total=total,
-                    url=f"https://www.amazon.com/dp/{asin}" if asin else "",
+                    url=DP_URL.format(asin=asin) if asin else "",
                     # Exports from late 2026 on; absent in older ones.
                     department=model.clean(r.get("Department")),
                 )
@@ -170,9 +176,39 @@ def load_images(vendor_dir):
         return json.load(f)
 
 
-def load(vendor_dir):
-    """Orders from <vendor_dir>/current/, with images.json merged in."""
-    orders = read(os.path.join(vendor_dir, "current"))
+def saved_order(order):
+    """Check and fill Amazon's own fields on an order for `add` (saved.py).
+
+    Gives it the links and site an exported physical order has. Raises
+    ValueError for an order ID or ASIN that isn't Amazon's shape.
+    """
+    order_id = order["id"]
+    if not ORDER_ID.fullmatch(order_id):
+        raise ValueError(
+            f"order ID {order_id!r} is not an Amazon order number like "
+            "111-1234567-1234567"
+        )
+    order["url"] = ORDER_URL.format(order_id=order_id)
+    order["site"] = order["site"] or "Amazon.com"
+    for item in order["items"]:
+        asin = item["asin"]
+        if asin and not ASIN.fullmatch(asin):
+            raise ValueError(f"ASIN {asin!r} is not 10 letters or digits")
+        item["url"] = DP_URL.format(asin=asin) if asin else ""
+
+
+def load(vendor_dir, with_saved=True):
+    """Orders from <vendor_dir>/current/ plus saved orders, with images merged.
+
+    Saved orders whose IDs are in the export are left out: the export wins.
+    The saved file is read before the export: an import prunes it only after
+    swapping in the export that has its orders, so a read racing an import
+    may see an order twice (and drop the saved copy), never lose it.
+    with_saved=False reads the export alone (an import's rebuild uses it when
+    order-pages.json can't be read).
+    """
+    pending = saved.read_file(vendor_dir)["orders"] if with_saved else []
+    orders = saved.combine(read(os.path.join(vendor_dir, "current")), pending)
     images = load_images(vendor_dir)
     for order in orders:
         for item in order["items"]:
@@ -320,7 +356,8 @@ def enrich(vendor_dir, opts, orders=None):
     """Look up product images for ASINs not yet resolved in images.json.
 
     Does nothing, and sends no request, unless opts.amazon_images. orders
-    is read() of current/ (read here when None). Returns a
+    is read() of current/ plus the saved orders (both read here when None),
+    so saved orders' images are looked up too. Returns a
     fetching.new_result() dict.
     """
     result = fetching.new_result(ID)
@@ -328,7 +365,7 @@ def enrich(vendor_dir, opts, orders=None):
         result["skipped"] = SKIPPED
         return result
     if orders is None:
-        orders = read(os.path.join(vendor_dir, "current"))
+        orders = saved.merge(vendor_dir, read(os.path.join(vendor_dir, "current")))
     asins = asins_newest_first(orders)
     cache = load_images(vendor_dir)
     todo = [a for a in asins if a not in cache]

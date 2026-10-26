@@ -28,6 +28,12 @@ some lookups were saved (by any store) before a site stopped the run or
 other lookups failed (the caches are partial, the page is rebuilt), or the
 page couldn't be rebuilt because an import was running; run update or build
 again later; 4 the page couldn't be rebuilt.
+
+add: 0 saved (or a dry run); 2 bad usage, an input that isn't a valid
+document (nothing saved), or an unreadable order-pages.json; 3 no data folder,
+or no export of that store yet; 4 saved, but the page couldn't be rebuilt (run
+build); 20 nothing saved: an import is running, or the file couldn't be
+written; retry.
 """
 
 import argparse
@@ -44,6 +50,7 @@ from order_history import (
     fetching,
     model,
     page,
+    saved,
     search,
     store,
     vendors,
@@ -153,15 +160,27 @@ def _data_dir(args):
     return path
 
 
-def _load_all(data_dir, registry):
-    """[(vendor, orders or None when the vendor has no export)]."""
+def _load_all(data_dir, registry, tolerant=False):
+    """[(vendor, orders or None when the vendor has no export)].
+
+    An unreadable order-pages.json exits 2, unless tolerant (an import's
+    rebuild): then that store's export is loaded alone, with a warning, so
+    the saved-orders file can't block an import.
+    """
     loaded = []
     for vendor in registry:
         vendor_dir = os.path.join(data_dir, vendor.ID)
         if not os.path.isdir(os.path.join(vendor_dir, "current")):
             loaded.append((vendor, None))
             continue
-        loaded.append((vendor, model.finish(vendor.load(vendor_dir))))
+        try:
+            orders = vendor.load(vendor_dir)
+        except saved.SavedError as e:
+            if not tolerant:
+                raise CliError(str(e), e.code) from e
+            _log(f"order-history: {e}; the page leaves the saved orders out")
+            orders = vendor.load(vendor_dir, with_saved=False)
+        loaded.append((vendor, model.finish(orders)))
     return loaded
 
 
@@ -226,6 +245,12 @@ def cmd_status(args, registry):
             entry["items"] = sum(len(o["items"]) for o in orders)
             if hasattr(vendor, "gaps"):
                 entry["gaps"] = vendor.gaps(vendor_dir, orders)
+            if saved.supports(vendor):
+                entry["saved_orders"] = sum(
+                    1 for o in orders if o["source"] == saved.SOURCE
+                )
+                entry["checked"] = saved.checked(vendor_dir)
+                entry["stale"] = saved.is_stale(entry["checked"])
         leftover = store.leftover_staging(vendor_dir)
         if leftover and not running:  # while an import runs, its staging is live
             entry["leftover_staging"] = leftover
@@ -275,7 +300,13 @@ def cmd_status(args, registry):
         )
         vid, as_of, n_orders, n_items = e["id"], e["as_of"], e["orders"], e["items"]
         line = f"{vid}: as of {as_of}, {n_orders} orders, {n_items} items"
-        print(line + (f"; {gaps}" if gaps else ""))
+        n_saved, checked = e.get("saved_orders"), e.get("checked")
+        if n_saved:
+            line += f" ({n_saved} saved from order pages)"
+        line += f"; {gaps}" if gaps else ""
+        if checked:
+            line += f"; checked {checked}" + (" (stale)" if e["stale"] else "")
+        print(line)
     print("page: " + (f"built {built}" if built else "not built"))
     return EXIT_OK
 
@@ -391,9 +422,10 @@ def _import_text(report):
         _out(f"  removed {name}, left by an interrupted import")
 
 
-def _build_page(data_dir, registry, page_hooks):
+def _build_page(data_dir, registry, page_hooks, tolerant=False):
     """Write <data>/index.html from every vendor's current export."""
-    result = page.build(data_dir, _load_all(data_dir, registry), **page_hooks)
+    loaded = _load_all(data_dir, registry, tolerant)
+    result = page.build(data_dir, loaded, **page_hooks)
     path, n_orders, shell = result["path"], result["orders"], result["shell"]
     _log(f"wrote {path} ({n_orders} orders; page shell from {shell})")
     return result
@@ -426,7 +458,7 @@ def cmd_import(args, registry, page_hooks=None):
     def rebuild():
         # Runs after the swap; a failure here undoes the import (store.py).
         try:
-            built.update(_build_page(data_dir, registry, page_hooks or {}))
+            built.update(_build_page(data_dir, registry, page_hooks or {}, True))
         except page.PageError as e:
             raise store.StoreError(str(e), e.code) from e
 
@@ -459,6 +491,63 @@ def cmd_import(args, registry, page_hooks=None):
     return EXIT_OK
 
 
+def _read_input(name):
+    """The text of an add input file, or of stdin for "-"."""
+    try:
+        if name == "-":
+            return sys.stdin.read()
+        with open(name, encoding="utf-8") as f:
+            return f.read()
+    except (OSError, ValueError) as e:  # ValueError: not UTF-8
+        raise CliError(f"can't read {name}: {e}; nothing saved", EXIT_USAGE) from e
+
+
+def _add_text(report):
+    vid, n_saved, page_path = report["store"], report["saved_orders"], report["page"]
+    added, replaced = len(report["added"]), len(report["replaced"])
+    skipped = len(report["skipped_in_export"])
+    counts = f"{added} added, {replaced} replaced, {skipped} already in the export"
+    if report["dry_run"]:
+        _out(f"{vid}: dry run, nothing saved: {counts}")
+    else:
+        _out(f"{vid}: {counts}; {n_saved} saved orders")
+        _out("page: " + (f"rebuilt {page_path}" if page_path else "unchanged"))
+
+
+def cmd_add(args, registry, page_hooks=None):
+    """Save orders read from a store's order pages, then rebuild the page."""
+    data_dir = _data_dir(args)
+    try:
+        vendor, orders = saved.parse(_read_input(args.file), registry)
+    except saved.SavedError as e:
+        raise CliError(str(e), e.code) from e
+
+    def rebuild():
+        return _build_page(data_dir, registry, page_hooks or {})["path"]
+
+    lock = store.read_lock if args.dry_run else store.import_lock
+    try:
+        with lock(data_dir):
+            report = saved.add(
+                data_dir,
+                vendor,
+                orders,
+                dry_run=args.dry_run,
+                rebuild=None if args.dry_run else rebuild,
+            )
+    except (saved.SavedError, store.StoreError) as e:
+        raise CliError(str(e), e.code) from e
+    except page.PageError as e:
+        raise CliError(
+            f"{e} The orders were saved; run `order-history build` to retry.", e.code
+        ) from e
+    if args.json:
+        _emit_json(report)
+    else:
+        _add_text(report)
+    return EXIT_OK
+
+
 def _enrich_all(data_dir, registry, opts):
     """Run every vendor's enrich(); [result], one per vendor with an export.
 
@@ -471,7 +560,13 @@ def _enrich_all(data_dir, registry, opts):
         for vendor in registry:
             current = os.path.join(data_dir, vendor.ID, "current")
             if hasattr(vendor, "enrich") and os.path.isdir(current):
-                work.append((vendor, vendor.read(current)))
+                orders = vendor.read(current)
+                if saved.supports(vendor):
+                    try:
+                        orders = saved.merge(os.path.dirname(current), orders)
+                    except saved.SavedError as e:
+                        raise CliError(str(e), e.code) from e
+                work.append((vendor, orders))
     results = []
     for vendor, orders in work:
         vendor_dir = os.path.join(data_dir, vendor.ID)
@@ -635,6 +730,21 @@ def build_parser():
     )
     p.set_defaults(func=cmd_import)
     p = sub.add_parser(
+        "add",
+        parents=[common],
+        help="save orders read from a store's order pages",
+        description="Save orders newer than the export, read from the store's own"
+        ' order pages, from a JSON document: {"store": "amazon", "orders":'
+        " [...]}. They show like exported orders until an export contains them."
+        " An order already in the export is skipped; one already saved is"
+        " replaced. Then rebuild the page.",
+    )
+    p.add_argument("file", help="the JSON document, or - for stdin")
+    p.add_argument(
+        "--dry-run", action="store_true", help="report what would change; save nothing"
+    )
+    p.set_defaults(func=cmd_add)
+    p = sub.add_parser(
         "build",
         parents=[common],
         help="rebuild the page",
@@ -687,7 +797,7 @@ def main(argv=None, registry=None, page_hooks=None, fetch_hooks=None):
         registry = vendors.VENDORS if registry is None else registry
         if args.func is cmd_update:
             return cmd_update(args, registry, page_hooks, fetch_hooks)
-        if args.func in (cmd_build, cmd_import):
+        if args.func in (cmd_add, cmd_build, cmd_import):
             return args.func(args, registry, page_hooks)
         return args.func(args, registry)
     except CliError as e:

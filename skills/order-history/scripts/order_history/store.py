@@ -33,7 +33,7 @@ import stat
 import tempfile
 import zipfile
 
-from order_history import model
+from order_history import model, saved
 
 try:
     import fcntl
@@ -290,6 +290,14 @@ def import_lock(data_dir):
     return _lock(data_dir)
 
 
+def read_lock(data_dir):
+    """The shared import lock for a read-only run (a dry run).
+
+    Creates nothing and waits for no one; StoreError (exit 20) mid-import.
+    """
+    return _shared_lock(data_dir)
+
+
 def update_lock(data_dir):
     """The update lock (<data>/.update.lock); StoreError (exit 20) if held."""
     return _lock(data_dir, UPDATE_LOCK_NAME, "update")
@@ -518,7 +526,9 @@ def import_export(data_dir, path, registry, dry_run=False, force=False, **hooks)
             staging = os.path.join(tmp, "export")
             os.mkdir(staging, 0o700)
             sides = _stage(vendor, src, staging, current)
-        return _report(vendor, src, "dry_run", *sides)
+            report = _report(vendor, src, "dry_run", *sides)
+            report["saved_orders"] = _prune(vendor, vendor_dir, sides[1], True)
+        return report
 
     os.makedirs(vendor_dir, 0o700, exist_ok=True)
     with _lock(data_dir):
@@ -542,10 +552,13 @@ def import_export(data_dir, path, registry, dry_run=False, force=False, **hooks)
             action = "refused_older" if older and not force else "imported"
             report = _report(vendor, src, action, old, new, old_as_of, new_as_of)
             report["removed_staging"] = removed
+            report["saved_orders"] = None
             if action == "imported":
                 archived = _swap(vendor_dir, staging, old_as_of, now, rebuild)
                 if archived is not None:
                     report["archived_to"] = os.path.relpath(archived, data_dir)
+                # Only after a successful swap: the new export now holds them.
+                report["saved_orders"] = _prune(vendor, vendor_dir, new, False)
         except StoreError as e:
             # After a failed rollback the staging folder may be the only
             # place the new export sits whole: keep it, and stop later imports
@@ -561,6 +574,22 @@ def import_export(data_dir, path, registry, dry_run=False, force=False, **hooks)
                 with contextlib.suppress(OSError):
                     shutil.rmtree(staging)
     return report
+
+
+def _prune(vendor, vendor_dir, new, dry_run):
+    """The import report's saved_orders: those the new export replaces.
+
+    None for a vendor without saved orders. A failure here can't undo an
+    import that has succeeded, and loses nothing (load() hides saved orders
+    the export has), so it is reported as "error" and the next import tries
+    again.
+    """
+    if not saved.supports(vendor):
+        return None
+    try:
+        return saved.prune(vendor_dir, {o["id"] for o in new}, dry_run)
+    except (saved.SavedError, OSError) as e:
+        return {"replaced_by_export": [], "kept": None, "error": str(e)}
 
 
 def _write_marker(vendor_dir, staging, error):

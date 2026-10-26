@@ -62,7 +62,7 @@ counts (AGENTS.md, "Before committing").
 | M4 | `update`: Adafruit items, opt-in Amazon images | M3 | complete |
 | M5 | Skill, vendor docs, `--skill`, plugin manifest, packaging, docs | M4 | complete |
 | M6 | Migrate real data, final verification, first release | M5 | complete |
-| M7 | `add`: saved orders from order pages, merged, pruned by import | M6 | pending |
+| M7 | `add`: saved orders from order pages, merged, pruned by import | M6 | complete |
 | M8 | Amazon catch-up flow in the skill; one real run with the user | M7 | pending |
 
 ## Design coverage
@@ -238,67 +238,27 @@ Open limitations:
 
 ## M7 — Saved orders: `add`, merging, pruning
 
-**Outcome:** `order-history add FILE|- [--dry-run] [--json]` saves orders read from
-Amazon's order pages to `<data>/amazon/order-pages.json` (atomically, under the import
-lock) and rebuilds the page. `amazon.load()` appends saved orders the export lacks and
-merges images over both; `update --amazon-images` and `gaps()` include their ASINs. A
-successful import drops saved orders whose IDs are now in the export and reports
-`saved_orders` (`replaced_by_export`, `kept`); a dry run reports without dropping.
-`status` gains `saved_orders` and `checked`. Before: an order placed after the export
-can't be found. After: `add` with that order, then `search` finds it, shaped like an
-exported one.
+**Outcome:** `order-history add FILE|- [--dry-run] [--json]` saves orders read from Amazon's
+order pages to `<data>/amazon/order-pages.json` (atomically, under the import lock; a new
+core module `saved.py`) and rebuilds the page; `amazon.load()` shows the saved orders the
+export lacks, with images, and `update --amazon-images` covers their ASINs; import drops
+the saved orders a new export has and reports `saved_orders`; `status` gains
+`saved_orders`, `checked` and `stale`. 214 unit tests.
 
 **Design coverage:** G1 (storage), G2, G3, G4 (`checked`). **Dependencies:** M6.
 
-**Scope:** the CLI, the Amazon vendor module, the vendor-contract docstring, tests, and
-the SKILL.md entries for `add` and the new report fields. Excluded: the browser flow
-(M8), any other store, any request to Amazon.
+### Evidence and findings
 
-**Implementation steps (locations proposed):**
+Status: complete. Evidence: [M7](evidence/M7.md) (full milestone definition, checks and
+review). Notebook: [M7](notebook/M7.md).
 
-1. Vendor contract: an optional saved-orders capability (for example a `SAVED_ORDERS`
-   flag), documented in `vendors/__init__.py`; Amazon declares it.
-2. Validation and normalization of the input document: required `id`, `date`
-   (YYYY-MM-DD), item `name`; `summary` refused; unknown store, invalid JSON or a store
-   without the capability exits 2 and saves nothing. Fill `source: "order-page"`, item
-   `url` from the ASIN, item `total` as unit × qty; amounts through `model.money`.
-3. `add`: skip IDs already in the export (listed in the report), replace saved IDs,
-   accept an empty list, record `checked`, write atomically under the import lock,
-   rebuild. Exit 3 with no data folder or no Amazon export, 4 if the page can't be built
-   (saved file kept), 20 while an import runs.
-4. `amazon.load()` merge and image coverage (`load`, `gaps`, `enrich`'s ASIN list).
-5. Import: prune after a successful swap, report `saved_orders`; `store.compare` keeps
-   using `read()` of the export only.
-6. `status`: `saved_orders` and `checked` (the later of the last `add` and the current
-   export's import time; how the import time is recorded is the builder's call).
-7. SKILL.md: `add` in the command list, the exit-code table and the report fields.
+Open limitations:
 
-**Acceptance criteria:**
-
-- A saved order appears in `search`, `order` and the page's data with the same fields
-  an exported Amazon order has (no `summary`), and with its image when `images.json`
-  has one.
-- Adding an ID already exported changes nothing for that ID and lists it as skipped;
-  adding a saved ID again replaces it; an empty list only updates `checked`.
-- Each invalid input exits 2 with `order-pages.json` unchanged.
-- An import whose export contains a saved ID drops it and reports it; saved orders it
-  lacks stay; its `orders.removed` never lists a saved order; `--dry-run` drops nothing.
-- `status` reports `checked`, and a test pins the 30-day boundary the skill uses.
-- No test reaches the network (`support.IsolatedTestCase`).
-
-**Verification:** the project checks above (tests on 3.10 and latest, pylint, pyink,
-page build and `test_page.py` against the built shell). New tests in
-`tests/test_add.py` (proposed) plus additions to the import, status and vendor tests.
-
-**Review:** `review-swarm --close`. Focus: data loss in `order-pages.json` (atomic
-write, lock, prune only after a successful swap), the export always winning by ID, and
-saved orders never counted as removed.
-
-**Sizing and checkpoint:** one new command and one new file format over existing
-patterns (import's lock and atomic write, update's image merge); about one session.
-Split point if it grows: steps 1–4 (add and load), then 5–7 (import, status, skill).
-
-**Status:** pending.
+- No real catch-up has run; the flow and the run with the user are M8.
+- `checked`'s import time is `current/`'s mtime, which a copy or restore of the data folder
+  can reset.
+- M8's skill rule should read `status`'s `stale` (more than 30 days since `checked`)
+  rather than compute dates.
 
 ## M8 — The Amazon catch-up flow
 
@@ -383,12 +343,15 @@ If they aren't, land the docs and leave the run as the open item.
 
 ## Next session
 
-- **Current milestone:** M7 (pending), then M8.
-- **Completed work:** M1–M6 (PRs #3–#9); the Amazon browser export flow (PR #10). The
-  design for catching up from order pages was approved 2026-10-25.
+- **Current milestone:** M8 (pending).
+- **Completed work:** M1–M6 (PRs #3–#9); the Amazon browser export flow (PR #10); M7 on
+  branch `m7-saved-orders` (checkpoint commit `plan: M7 — Saved orders: add, merging,
+  pruning`; push and PR are the orchestrator's).
 - **Uncommitted state:** none. `.no-pitch` stays untracked.
 - **Decisions pending:** none.
-- **Context boundary:** normal; planning only.
-- **Resume action:** start M7 on `m7-saved-orders` from an up-to-date `origin/main`.
-- **Read first:** [catching up from order pages](design-order-pages.md), M7 above,
-  `vendors/__init__.py`, `vendors/amazon.py`, `store.py`'s import flow.
+- **Context boundary:** normal.
+- **Resume action:** start M8 on `m8-<slug>` from an up-to-date `origin/main` once M7 is
+  merged.
+- **Read first:** [catching up from order pages](design-order-pages.md), M8 above,
+  `skills/order-history/vendors/amazon.md`, SKILL.md "Saved orders: add" and the `status`
+  fields, [M7 evidence](evidence/M7.md) limitations.

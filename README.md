@@ -99,6 +99,7 @@ open ~/Documents/"Order History"/index.html
 | `order ID [--store ID]` | One order |
 | `status` | What is imported, what is missing, when the page was built |
 | `update [--email E] [--amazon-images] [--dry-run]` | Fill in what the exports leave out (below), then rebuild |
+| `add FILE\|- [--dry-run]` | Save Amazon orders newer than the export, read from its order pages by the agent (a JSON document); they show like exported orders until an export has them |
 | `build` | Rebuild the page by hand |
 | `skill [STORE]`, `--skill` | Print the agent instructions |
 

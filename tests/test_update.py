@@ -18,7 +18,7 @@ import urllib.parse
 import urllib.request
 
 import support
-from order_history import fetching, store
+from order_history import fetching, model, saved, store
 from order_history.vendors import adafruit, amazon
 
 ROBOTS_OK = b"User-agent: *\nDisallow: /checkout\n"
@@ -673,6 +673,26 @@ class AmazonUpdateTest(UpdateCase):
         self.assertEqual(code, 0, err)
         self.assertEqual(net.calls, [])
         self.assertFalse(os.path.exists(os.path.join(self.data, "index.html")))
+
+    def test_saved_orders_images_are_looked_up(self):
+        images = {a: {"src": "p"} for a in ("B000TEST03", "B000TEST04", "B0DIGIT002")}
+        images.update(self.images_json())
+        images["B000TEST02"] = {"src": None}
+        amazon.save_images(os.path.join(self.data, "amazon"), images)
+        saved_order = model.new_order(
+            "amazon", "111-0000099-0000001", "2026-10-20", source=saved.SOURCE
+        )
+        saved_order["items"].append(model.new_item("Example", asin="B000000000"))
+        saved.write_file(
+            os.path.join(self.data, "amazon"),
+            {"format": 1, "checked": None, "orders": [saved_order]},
+        )
+        net = FakeNet({p_hit("B000000000"): b"x" * 2000})
+        code, out, err = self.update(net, "--amazon-images", "--json")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(net.urls(), [p_hit("B000000000")])
+        self.assertEqual(self.images_json()["B000000000"], {"src": "p"})
+        self.assertEqual(json.loads(out)["vendors"][0]["changed"], 1)
 
     def test_dry_run_counts_and_sends_nothing(self):
         net = FakeNet()

@@ -63,6 +63,7 @@ counts or dates that describe one account. Use made-up examples instead.
 │           ├── search.py        ← matching rules shared with the page
 │           ├── page.py          ← get a page shell; shell + data → index.html
 │           ├── fetching.py      ← what update's lookups share (injected network)
+│           ├── saved.py         ← saved orders: add's input, order-pages.json, pruning
 │           ├── agent_skill.md   ← symbolic link to ../../SKILL.md
 │           └── vendors/
 │               ├── __init__.py  ← VENDORS, the registry
@@ -81,7 +82,10 @@ The package is standard library only and supports Python 3.10 and later.
 - **Vendor modules.** Each store is a module with `ID`, `NAME`, `detect`, `install`,
   `as_of`, `read`, `load`, and optionally `compare`, `gaps` and `enrich`; the contract is
   the docstring of `vendors/__init__.py`. Each returns orders in one shape
-  (`model.new_order()`). A store with no imported export is skipped.
+  (`model.new_order()`). A store with no imported export is skipped. A store that keeps
+  saved orders (Amazon) sets `SAVED_ORDERS` and has `saved_order()`; the core then offers
+  `add`, its `load()` appends `saved.merge()`'s orders the export lacks, and import drops
+  the saved orders a new export contains (`saved.py`).
 - **Adding a store:** write `vendors/<id>.py` and `skills/order-history/vendors/<id>.md`,
   add the symbolic link `order_history/vendors/<id>.md -> ../../../vendors/<id>.md`, list
   the module in `vendors/__init__.py`, and give it a badge color (`--store-<id>`) in
