@@ -26,6 +26,14 @@ to unzip it.
 
 ### With a browser
 
+**Is a new export worth it?** With read access to the user's email, check first: find
+Amazon's order confirmations (sender `auto-confirm@amazon.com`) dated after the current
+export's `as_of` (from `order-history status --json`). Read only their dates, not their
+bodies; the bodies hold order details the question doesn't need. If there are none, the
+current export already has every order: say so, and suggest a new export only if the user
+wants something else from it (a returned or cancelled order's new status, say). If there
+are some, say how many and how recent, and offer the steps below.
+
 When you can drive the user's browser (Claude in Chrome, or any tool that works in the
 user's own signed-in browser) you can do the navigating and waiting. Amazon makes the user
 **sign in again on each link opened from its emails**, so this can't run unattended: you
@@ -61,6 +69,9 @@ credential, and leave the request's own submit and confirm steps to the user.
    `Your Orders*.zip` modified after the download started.
 6. Import it: `order-history import <zip> --dry-run --json`, report the changes, and run
    the real import when the user agrees (see SKILL.md's "Importing an export").
+7. With email access, check the result the same way: an order confirmation dated after
+   the new export's `as_of` is an order the export missed (it can miss one placed minutes
+   before it was built). Tell the user, and suggest another request later if they want it.
 
 The export is cumulative: a newer one holds every earlier order, so it replaces the
 current one. `import` archives the old one under `amazon/archive/<date>/`, and its report
