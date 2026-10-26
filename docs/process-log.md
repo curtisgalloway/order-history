@@ -265,3 +265,20 @@ Prevention: run the formatter before scripting edits, and match on text read aft
 check every pattern before writing any.
 Fix belongs in: user instructions (notes on scripted edits)
 Status: open
+
+## 2026-10-25T23:15-0700 — privacy slip: observed page values copied into examples
+Chapter: [M8](notebook/M8.md)
+What happened: the first draft of the catch-up steps used the observed real order's page
+text (its order date, delivery date and a price) and the existing `add` example's amounts
+as examples. A staged-diff date grep caught the dates before the first
+commit. The orchestrator later found that the existing example amounts and fixtures (from
+the M7 design and M7) also came from that order; replaced in M8. Then the first rewording
+of the run in the evidence still stated a count, caught by two review arms, and the fix for
+that still used a number word, caught by the recheck.
+Cost: rewrites in three passes, a review finding and a recheck finding.
+Prevention: when the brief or a design quotes values observed on a real page, use them as
+facts about the page's shape only, and write every example with invented values from the
+start. Describe a real run without numbers or number words.
+Fix belongs in: skill (project-plan: the privacy step should name observed values and
+number words, not only IDs, names and dates)
+Status: open

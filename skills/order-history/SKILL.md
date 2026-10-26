@@ -1,6 +1,6 @@
 ---
 name: order-history
-description: Search and maintain the user's own purchase history from the order exports that stores let them download (Amazon's "Request My Data" zip, Adafruit's order-history CSV), through the order-history command-line tool. Use when the user asks when or where they bought something, what an order contained or cost, wants a store export imported ("import this") or a new Amazon export requested and downloaded, wants the local order search page rebuilt, or wants missing item lists or product images filled in.
+description: Search and maintain the user's own purchase history from the order exports that stores let them download (Amazon's "Request My Data" zip, Adafruit's order-history CSV), through the order-history command-line tool. Use when the user asks when or where they bought something, what an order contained or cost, wants a store export imported ("import this") or a new Amazon export requested and downloaded, wants recent Amazon orders caught up from their order pages ("refresh my orders", "catch up"), wants the local order search page rebuilt, or wants missing item lists or product images filled in.
 ---
 
 <!--
@@ -71,7 +71,9 @@ export (see `vendors/<store>.md`) and import it.
 
 For Amazon, when you can drive the user's own signed-in browser, you can also do the
 requesting, waiting and downloading with them: `vendors/amazon.md`, "With a browser". The
-user still signs in at each step, and you never type a credential.
+user still signs in at each step, and you never type a credential. Between exports, the
+same browser can catch up the newest orders from Amazon's order pages, when the user
+asks (`vendors/amazon.md`, "Catching up from order pages").
 
 ## Importing an export
 
@@ -113,14 +115,16 @@ The report (`--json`) holds:
 
 Orders placed after the export can be added from the store's own order pages (Amazon
 only). The agent reads the pages and writes one JSON document; the tool never contacts
-the store:
+the store. The steps for reading Amazon's pages in the user's browser are in
+`vendors/amazon.md`, "Catching up from order pages"; run them only when the user asks
+(see "Is the data current?").
 
 ```json
 {"store": "amazon",
- "orders": [{"id": "111-1234567-1234567", "date": "2026-10-25", "currency": "USD",
-             "total": "35.67", "status": "In progress",
-             "items": [{"name": "Example USB switch", "asin": "B000000000",
-                        "qty": "5", "unit": "6.99"}]}]}
+ "orders": [{"id": "111-1234567-1234567", "date": "2026-03-03", "currency": "USD",
+             "total": "28.14", "status": "In progress",
+             "items": [{"name": "Example USB cable", "asin": "B000000000",
+                        "qty": "2", "unit": "12.99"}]}]}
 ```
 
 ```bash
@@ -132,7 +136,7 @@ order-history add orders.json --json             # or `add -` to read stdin
   least one item with a `name`. It may have `currency` (default `USD`), `total` (the
   order's grand total), `status` and `site`; an item may have `asin`, `qty` (default 1),
   `unit`, `total` (default unit × qty) and `department`. Amounts are strings like
-  `"6.99"` or numbers. Anything else, `summary` included, is refused: a saved order must
+  `"12.99"` or numbers. Anything else, `summary` included, is refused: a saved order must
   look like an exported one, which has no subtotal/tax summary.
 - An order whose ID is already in the export is skipped (the export wins); one already
   saved is replaced, for example after it shipped. An empty `orders` list is fine: it
@@ -188,6 +192,20 @@ undo itself: tell the user and show them the file it names before doing anything
 
 `order-history build` rebuilds the page from the current exports (import and update do it
 themselves).
+
+### Is the data current?
+
+Before answering a question from Amazon data, look at the Amazon entry of
+`order-history status --json`. When `stale` is true (more than 30 days since `checked`),
+answer from what is there, and say once in the conversation that the data was last
+refreshed on `checked`'s date and that you can catch up from the order pages if they
+want. Don't repeat it later in the same conversation, and don't run the catch-up unless
+the user says yes or asks for it themselves. Read `stale`; don't work out the age
+yourself.
+
+Even when `stale` is false, an order the user describes as recent that `search` can't
+find may simply be newer than the data: say so and offer the catch-up, under the same
+limit (once per conversation, counting the suggestion above, and only on a yes).
 
 ## Filling in what exports leave out: update
 
