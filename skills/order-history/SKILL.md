@@ -102,7 +102,46 @@ The report (`--json`) holds:
   (`{order, asin, old, new}`): a newer export can blank a digital title, and the archived
   export is then the only copy of the old name;
 - `archived_to`, `removed_staging` (folders left by an interrupted import, now removed),
-  and `page` (the rebuilt page, or null).
+  and `page` (the rebuilt page, or null);
+- `saved_orders` (Amazon; null for other stores and for a refused import):
+  `replaced_by_export` (IDs of saved orders the new export now has, which the import
+  dropped, or would drop on a dry run) and `kept` (saved orders it still lacks). An
+  `error` in it means dropping them failed; the import itself stands, the export's copy
+  is the one shown, and the next import tries again.
+
+## Saved orders: add
+
+Orders placed after the export can be added from the store's own order pages (Amazon
+only). The agent reads the pages and writes one JSON document; the tool never contacts
+the store:
+
+```json
+{"store": "amazon",
+ "orders": [{"id": "111-1234567-1234567", "date": "2026-10-25", "currency": "USD",
+             "total": "35.67", "status": "In progress",
+             "items": [{"name": "Example USB switch", "asin": "B000000000",
+                        "qty": "5", "unit": "6.99"}]}]}
+```
+
+```bash
+order-history add orders.json --dry-run --json   # report; saves nothing
+order-history add orders.json --json             # or `add -` to read stdin
+```
+
+- An order needs `id` (Amazon's `111-1234567-1234567` form), `date` (YYYY-MM-DD) and at
+  least one item with a `name`. It may have `currency` (default `USD`), `total` (the
+  order's grand total), `status` and `site`; an item may have `asin`, `qty` (default 1),
+  `unit`, `total` (default unit × qty) and `department`. Amounts are strings like
+  `"6.99"` or numbers. Anything else, `summary` included, is refused: a saved order must
+  look like an exported one, which has no subtotal/tax summary.
+- An order whose ID is already in the export is skipped (the export wins); one already
+  saved is replaced, for example after it shipped. An empty `orders` list is fine: it
+  records that the pages were checked and nothing new was found.
+- Saved orders show and search exactly like exported ones (`source` is `order-page`) and
+  get product images like any other. They are kept in `<data>/amazon/order-pages.json`
+  until an import brings an export that has them.
+- The report has `store`, `dry_run`, `added`, `replaced` and `skipped_in_export` (order
+  IDs), `saved_orders` (how many are saved now), `checked` and `page`.
 
 ## Answering questions
 
@@ -127,7 +166,8 @@ Substring matching also brings in noise: a short term matches inside unrelated w
 product first, read every result before answering, and confirm with a second term when
 the first returns several unrelated orders.
 
-An order has `store`, `id`, `date` (YYYY-MM-DD), `currency`, `source` (`export`),
+An order has `store`, `id`, `date` (YYYY-MM-DD), `currency`, `source` (`export`, or
+`order-page` for a saved order; see "Saved orders"),
 `items`, and when present `total`, `status` (`In progress` for an order still in flight;
 absent for the normal finished state), `digital`, `site`, `shipMethod`, `url` and
 `summary`. Each item has `name` and `qty`, and when known `unit`, `total`, `url`, `asin`
@@ -140,7 +180,10 @@ in the export's own files (see `vendors/amazon.md`).
 `status` prints `{data_dir, vendors, page_built, import_running}`. `vendors` lists each
 store with `id`, `name`, `status` (`ok` or `missing`), and for an imported store `as_of`,
 `orders`, `items` and `gaps` (`items_unfetched` for Adafruit, `images_missing` for
-Amazon). `import_failed` on a store means an import couldn't
+Amazon). Amazon also has `saved_orders` (how many of its orders are saved ones),
+`checked` (date and time of the last refresh: the later of the last `add` and the
+current export's import) and `stale` (true when `checked` is more than 30 days old).
+`import_failed` on a store means an import couldn't
 undo itself: tell the user and show them the file it names before doing anything else.
 
 `order-history build` rebuilds the page from the current exports (import and update do it
@@ -173,16 +216,16 @@ Each store's result has `requests`, `changed` (lookups saved), `pending` (still 
 Read the code together with the command: 20 and 21 mean "nothing done" and "partly done"
 for every command, but what was partly done differs.
 
-| Code | `search`, `order` | `import` | `update` | `build`, `init`, `status` |
-| --- | --- | --- | --- | --- |
-| 0 | found | imported, or dry run | done, or nothing to do | done |
-| 1 | nothing matched | — | — | — |
-| 2 | bad usage; an unknown `--store`; an order ID found in several orders | bad usage; file not recognized, or claimed by two stores | bad usage | bad usage; unreadable config |
-| 3 | no data folder | no data folder | no data folder; or Adafruit orders need items and there is no lookup email | no data folder (not `init`) |
-| 4 | — | the page couldn't be built; the import was undone | the page couldn't be rebuilt; the caches are saved, run `build` | `build`: no page shell, or the page couldn't be written; the old page is kept |
-| 20 | — | nothing changed: another import is running, or a failure was rolled back; retry | nothing saved: throttled, robots.txt said no or couldn't be read, every lookup failed, or another update or an import is running; retry later | `build`: an import is running; retry |
-| 21 | — | an import failed **and couldn't undo itself**: stop, show the user the folders named, change nothing | some lookups saved, then the run stopped; or the rebuild met a running import. Run `update` (or `build`) again later | — |
-| 30 | — | older than the current export (pass `--force` only if the user says so), or an unsafe zip member or folder entry | — | — |
+| Code | `search`, `order` | `import` | `update` | `add` | `build`, `init`, `status` |
+| --- | --- | --- | --- | --- | --- |
+| 0 | found | imported, or dry run | done, or nothing to do | saved, or dry run | done |
+| 1 | nothing matched | — | — | — | — |
+| 2 | bad usage; an unknown `--store`; an order ID found in several orders | bad usage; file not recognized, or claimed by two stores | bad usage | bad usage; an invalid input document (nothing saved); an unreadable `order-pages.json` | bad usage; unreadable config |
+| 3 | no data folder | no data folder | no data folder; or Adafruit orders need items and there is no lookup email | no data folder, or no export of that store yet | no data folder (not `init`) |
+| 4 | — | the page couldn't be built; the import was undone | the page couldn't be rebuilt; the caches are saved, run `build` | the page couldn't be rebuilt; the orders are saved, run `build` | `build`: no page shell, or the page couldn't be written; the old page is kept |
+| 20 | — | nothing changed: another import is running, or a failure was rolled back; retry | nothing saved: throttled, robots.txt said no or couldn't be read, every lookup failed, or another update or an import is running; retry later | nothing saved: an import is running, or the file couldn't be written; retry | `build`: an import is running; retry |
+| 21 | — | an import failed **and couldn't undo itself**: stop, show the user the folders named, change nothing | some lookups saved, then the run stopped; or the rebuild met a running import. Run `update` (or `build`) again later | — | — |
+| 30 | — | older than the current export (pass `--force` only if the user says so), or an unsafe zip member or folder entry | — | — | — |
 
 `--skill` and `skill` need no data folder; `skill <store>` exits 2 for an unknown store.
 
@@ -203,6 +246,7 @@ searched; only the page is stale.
   amazon/current/             the imported export, as unzipped
   amazon/archive/<date>/      earlier exports, kept
   amazon/images.json          product image cache (update --amazon-images)
+  amazon/order-pages.json     saved orders (add), until an export has them
   adafruit/current/order_history.csv
   adafruit/archive/<date>/
   adafruit/items.json         item lists (update)

@@ -206,6 +206,8 @@ class RegistryTest(unittest.TestCase):
             for name in ("ID", "NAME", "detect", "as_of", "load", "gaps"):
                 self.assertTrue(hasattr(v, name), f"{v.ID}.{name}")
         self.assertIs(vendors.by_id("adafruit"), adafruit)
+        self.assertTrue(amazon.SAVED_ORDERS)
+        self.assertFalse(hasattr(adafruit, "SAVED_ORDERS"))
         self.assertIsNone(vendors.by_id("nope"))
 
 

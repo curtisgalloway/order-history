@@ -70,6 +70,12 @@ clients may fetch. `update` reads Adafruit's before it looks up any order
 (not on a dry run, or when nothing is missing) and stops if the lookup page
 is disallowed or the file can't be read.
 
+**Saved order** — an order newer than the export, read from the store's own order
+pages by the agent and stored by `order-history add` in `<store>/order-pages.json`
+(Amazon only). It looks and searches like an exported order; when an import brings an
+export containing its ID, the export's copy replaces it. *Catch-up* is reading the order
+pages to find those orders.
+
 **Single-file build** — the page is built so its JavaScript, styles and data
 are all inside one `index.html`, which therefore opens from disk with no web
 server (done by `vite-plugin-singlefile`).

@@ -19,7 +19,7 @@ import zipfile
 from unittest import mock
 
 import support
-from order_history import store, vendors
+from order_history import saved, store, vendors
 
 # Invented order IDs and products.
 P1, P2, P3 = "111-0000010-0000001", "111-0000010-0000002", "111-0000010-0000003"
@@ -758,6 +758,117 @@ class AdafruitImportTest(ImportCase):
         os.mkdir(folder)
         write_adafruit(os.path.join(folder, "order_history.csv"), [])
         self.assertEqual(self.import_json(folder)[0], 2)
+
+
+P9 = "111-0000010-0000009"  # a saved order no export has
+
+
+class SavedOrdersImportTest(ImportCase):
+    """Import drops saved orders the new export has, and only after a swap."""
+
+    def setUp(self):
+        super().setUp()
+        self.assertEqual(self.import_json(self.old_zip)[0], 0)
+        doc = {
+            "store": "amazon",
+            "orders": [
+                {"id": oid, "date": "2025-03-01", "items": [{"name": "Saved " + oid}]}
+                for oid in (P3, P9)
+            ],
+        }
+        path = os.path.join(self.src, "saved.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(doc, f)
+        code, _, err = self.run_cli("add", path, "--data-dir", self.data)
+        self.assertEqual(code, 0, err)
+        self.saved_path = saved.path(self.amazon)
+
+    def saved_ids(self):
+        with open(self.saved_path, encoding="utf-8") as f:
+            return sorted(o["id"] for o in json.load(f)["orders"])
+
+    def test_dry_run_reports_and_drops_nothing(self):
+        before = snapshot(self.data)
+        code, report, _ = self.import_json(self.new_zip, "--dry-run")
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            report["saved_orders"], {"replaced_by_export": [P3], "kept": 1}
+        )
+        self.assertEqual(snapshot(self.data), before)
+
+    def test_import_drops_the_exported_and_keeps_the_rest(self):
+        code, report, err = self.import_json(self.new_zip)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(
+            report["saved_orders"], {"replaced_by_export": [P3], "kept": 1}
+        )
+        self.assertEqual(self.saved_ids(), [P9])
+        # The comparison is of the exports alone: a saved order is never removed.
+        self.assertEqual(report["orders"]["removed"], [P2])
+        self.assertEqual(report["orders"]["added"], [P3])
+        self.assertEqual(report["orders"]["before"], 4)
+        code, out, _ = self.run_cli("order", P3, "--json", "--data-dir", self.data)
+        self.assertEqual(json.loads(out)["order"]["source"], "export")
+        code, out, _ = self.run_cli("order", P9, "--json", "--data-dir", self.data)
+        self.assertEqual((code, json.loads(out)["order"]["source"]), (0, "order-page"))
+
+    def test_failed_import_drops_nothing(self):
+        before = snapshot(self.amazon)
+        with mock.patch.object(store.os, "rename", side_effect=OSError("disk")):
+            code, _, _ = self.import_json(self.new_zip)
+        self.assertEqual(code, 20)
+        self.assertEqual(self.saved_ids(), [P3, P9])
+        self.assertEqual(snapshot(self.amazon), before)
+
+    def test_failed_rebuild_drops_nothing(self):
+        os.unlink(self.cached_shell)
+        code, _, _ = self.import_json(self.new_zip)
+        self.assertEqual(code, 4)
+        self.assertEqual(self.saved_ids(), [P3, P9])
+
+    def test_refused_older_drops_nothing(self):
+        self.assertEqual(self.import_json(self.new_zip)[0], 0)
+        self.run_cli(
+            "add", os.path.join(self.src, "saved.json"), "--data-dir", self.data
+        )
+        self.assertEqual(self.saved_ids(), [P9])  # P3 is skipped: it is exported
+        code, report, _ = self.import_json(self.old_zip)
+        self.assertEqual(code, 30)
+        self.assertIsNone(report["saved_orders"])
+        self.assertEqual(self.saved_ids(), [P9])
+
+    def test_a_prune_failure_keeps_the_import(self):
+        with mock.patch.object(saved, "write_file", side_effect=OSError("full")):
+            code, report, err = self.import_json(self.new_zip)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(report["action"], "imported")
+        self.assertIn("full", report["saved_orders"]["error"])
+        self.assertEqual(self.saved_ids(), [P3, P9])
+        # P3 still shows once, from the export; the next import prunes it.
+        code, out, _ = self.run_cli("search", P3, "--json", "--data-dir", self.data)
+        self.assertEqual([o["source"] for o in json.loads(out)["orders"]], ["export"])
+        self.assertEqual(self.import_json(self.new_zip)[1]["saved_orders"]["kept"], 1)
+        self.assertEqual(self.saved_ids(), [P9])
+
+    def test_an_unreadable_saved_file_does_not_block_an_import(self):
+        # Review F1: the import stands; the page leaves the saved orders out.
+        with open(self.saved_path, "w", encoding="utf-8") as f:
+            f.write("{broken")
+        code, report, err = self.import_json(self.new_zip)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(report["action"], "imported")
+        self.assertIn("can't read", report["saved_orders"]["error"])
+        self.assertIn("leaves the saved orders out", err)
+        self.assertIsNotNone(report["page"])
+        self.assert_current_is(self.new_dir)
+        with open(self.saved_path, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "{broken")
+
+    def test_other_stores_report_none(self):
+        path = write_adafruit(
+            os.path.join(self.src, "a.csv"), [("1000001-2000000001", "2024-01-31", "1")]
+        )
+        self.assertIsNone(self.import_json(path)[1]["saved_orders"])
 
 
 def _widgets_vendor():

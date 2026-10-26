@@ -243,3 +243,25 @@ Prevention: after changing a file with a shell command, read the region again be
 the edit tool on it; or make all changes to that file through one mechanism.
 Fix belongs in: user instructions (the "On Claude Code" tool notes)
 Status: open
+
+## 2026-10-25T22:10-0700 — instruction not followed: a notebook timestamp typed, not read
+Chapter: [M7](notebook/M7.md)
+What happened: three decision entries were stamped 22:20 in the same command that first
+read the clock, which then said 22:10. The lab-notebook skill says to take every
+timestamp from the system clock at the moment of writing.
+Cost: a correction entry in an append-only chapter.
+Prevention: read the clock in a separate step before writing the heading, or write the
+entry with the shell substituting the time, as the correction did.
+Fix belongs in: skill (lab-notebook: suggest generating the heading from `date`)
+Status: open
+
+## 2026-10-25T22:20-0700 — failed command: a scripted edit after the formatter rewrapped its target
+Chapter: [M7](notebook/M7.md)
+What happened: a Python find-and-replace over a test file asserted on a line pyink had
+rewrapped since it was written; the first of its two edits had already been saved, so the
+file was half-edited until a second script fixed the rest.
+Cost: one failed command and a re-check of which edit applied.
+Prevention: run the formatter before scripting edits, and match on text read after it; or
+check every pattern before writing any.
+Fix belongs in: user instructions (notes on scripted edits)
+Status: open
