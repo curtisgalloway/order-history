@@ -29,10 +29,12 @@ to unzip it.
 **Is a new export worth it?** With read access to the user's email, check first: find
 Amazon's order confirmations (sender `auto-confirm@amazon.com`) dated after the current
 export's `as_of` (from `order-history status --json`). Read only their dates, not their
-bodies; the bodies hold order details the question doesn't need. If there are none, the
-current export already has every order: say so, and suggest a new export only if the user
-wants something else from it (a returned or cancelled order's new status, say). If there
-are some, say how many and how recent, and offer the steps below.
+bodies; the bodies hold order details the question doesn't need. A confirmation dated
+after `as_of` is a sign of an order the export lacks: say how many there are and how
+recent, and offer the steps below. Finding none proves nothing about the export, since a
+confirmation can be deleted, filed out of the searched folders, or sent to another
+address. Say "no newer order confirmations were found in the mail I searched", name any
+limit on what was searched, and leave the choice to the user.
 
 When you can drive the user's browser (Claude in Chrome, or any tool that works in the
 user's own signed-in browser) you can do the navigating and waiting. Amazon makes the user
@@ -107,9 +109,10 @@ and 7 digits joined by hyphens), and an ASIN only when it is ten letters or digi
 
 1. **Where the data ends.** `order-history status --json`: the Amazon entry's `as_of`
    (the newest order in the export), `saved_orders` and `checked`. With read access to
-   the user's email, the dates of order confirmations after `as_of` show whether there
-   is anything to find, as in "Is a new export worth it?" above: dates only, never the
-   bodies.
+   the user's email, the dates of order confirmations after `as_of` hint at how many
+   orders to look for, as in "Is a new export worth it?" above: dates only, never the
+   bodies. Finding none is no reason to skip the next step: the order list is what
+   decides.
 2. **Find the new orders.** Open `https://www.amazon.com/gp/css/order-history` in a tab
    you can read. It lists orders newest first, 10 to a page. Each card shows the order
    date, the total, `ORDER # <id>` and a "View order details" link. Take only the order

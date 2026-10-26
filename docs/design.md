@@ -346,8 +346,9 @@ The skill gives the same codes per command (M5).
 - **The Node-free page is in phase 1.** Chosen by the user. Without it, a
   plugin user needs Node to see the page.
 - **Email dates only, as a signal.** Amazon's confirmation emails lack full
-  details, so no order is read from one; their dates show whether newer orders
-  exist (amended in M8). Orders newer than the export come from the order pages
+  details, so no order is read from one; a date after the export hints at a newer
+  order, and finding none proves nothing (amended in M8, corrected for #14).
+  Orders newer than the export come from the order pages
   ([design-order-pages.md](design-order-pages.md)).
 
 ## Cross-cutting concerns

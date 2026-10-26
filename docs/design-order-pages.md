@@ -85,7 +85,8 @@ Anti-goals (a failure even if it works):
 - **Saved orders look the same** (user, G2). Internally they carry
   `source: "order-page"`; the page and the search results do not mark them.
 - **Order confirmation emails are a signal only** (user, 2026-10-25): with email
-  access, their dates show whether catch-up has anything to find.
+  access, a date after the export is a sign catch-up has something to find; finding
+  none proves nothing (issue #14).
 
 ## How it works
 
