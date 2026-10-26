@@ -8,7 +8,9 @@ SPDX-License-Identifier: Apache-2.0
 Revision: 2026-10-25, approved (page shell published as a release asset, not committed).
 Corrected in M4: release assets are protected by immutable releases, not the tag
 ruleset (M3 review F1, user decision 2026-10-25). Corrected in M5: the exit-code table
-lists 4 and each command's 20/21, as built in M2–M4.
+lists 4 and each command's 20/21, as built in M2–M4. Amended in M8: order
+confirmation emails are read for their dates only, as a signal, and catching up between
+exports is designed in [design-order-pages.md](design-order-pages.md).
 
 **Terms** (more in [GLOSSARY.md](../GLOSSARY.md)):
 
@@ -54,8 +56,10 @@ Non-goals:
   you set up for the steps that need no login.
 - An MCP server. The command-line tool is the agent interface; an MCP server
   can wrap it later if some agent needs one.
-- Reading order-confirmation emails. Amazon's no longer list full order
-  details.
+- Reading the bodies of order-confirmation emails. Amazon's no longer list full
+  order details. With email access, the agent reads only their dates, as a signal
+  of whether a new export or a catch-up has anything to find (amended in M8; the
+  orders themselves come from order pages, [design-order-pages.md](design-order-pages.md)).
 
 ## Current behavior and constraints
 
@@ -341,7 +345,10 @@ The skill gives the same codes per command (M5).
   Chosen by the user.
 - **The Node-free page is in phase 1.** Chosen by the user. Without it, a
   plugin user needs Node to see the page.
-- **No email source.** Amazon's confirmation emails lack full details.
+- **Email dates only, as a signal.** Amazon's confirmation emails lack full
+  details, so no order is read from one; their dates show whether newer orders
+  exist (amended in M8). Orders newer than the export come from the order pages
+  ([design-order-pages.md](design-order-pages.md)).
 
 ## Cross-cutting concerns
 
@@ -403,7 +410,9 @@ The skill gives the same codes per command (M5).
 ## Phase 2 outline (not designed here)
 
 Catching up between exports is now designed in
-[design-order-pages.md](design-order-pages.md), which replaces the second bullet below.
+[design-order-pages.md](design-order-pages.md), which replaces the second bullet below
+(its `--provisional` flag is dropped; `add` always saves this kind). The first bullet is
+built for Amazon (`vendors/amazon.md`, "With a browser").
 
 - Each vendor's `.md` gains a download flow: the steps for the agent's
   browser tool to request or download the export in your signed-in session.

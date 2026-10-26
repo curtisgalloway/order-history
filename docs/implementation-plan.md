@@ -63,7 +63,7 @@ counts (AGENTS.md, "Before committing").
 | M5 | Skill, vendor docs, `--skill`, plugin manifest, packaging, docs | M4 | complete |
 | M6 | Migrate real data, final verification, first release | M5 | complete |
 | M7 | `add`: saved orders from order pages, merged, pruned by import | M6 | complete |
-| M8 | Amazon catch-up flow in the skill; one real run with the user | M7 | pending |
+| M8 | Amazon catch-up flow in the skill; one real run with the user | M7 | in progress |
 
 ## Design coverage
 

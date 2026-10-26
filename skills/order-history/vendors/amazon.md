@@ -79,6 +79,94 @@ lists titles that changed. Newer exports have blanked some digital product names
 `Not Applicable` (reported as `titles_blanked`); the archived export is then the only
 remaining copy of those names, so never delete an archive.
 
+## Catching up from order pages
+
+Between exports, you can add the orders placed since the export from Amazon's own order
+pages in the user's signed-in browser, and save them with `order-history add` (SKILL.md,
+"Saved orders: add"). A saved order looks and searches like an exported one, and the
+next export replaces it. Physical orders on amazon.com only: digital orders (Kindle,
+apps) live on other pages, and returns or status changes of orders already in the export
+wait for the next export.
+
+**Only when the user asks** for a catch-up or refresh, or says yes to your suggestion of
+one (SKILL.md, "Is the data current?"). It needs a browser tool that works in the user's
+own signed-in browser, as in "With a browser" above. The tool itself never contacts
+Amazon: you read the pages and pass it a JSON document.
+
+**Sign-in.** If any page asks the user to sign in, verify it's them, or solve a puzzle,
+stop and ask them to do it in that tab, then continue. Never type a password, a one-time
+code or any other credential, and never work around a sign-in or a captcha.
+
+**Reading pages with a script.** Some browser tools refuse to return text that contains
+a URL with a query string (Claude in Chrome's JavaScript tool answers "BLOCKED:
+Cookie/query string data"). Return only what you need: an order ID, a link's pathname,
+an ASIN, never a whole `href`.
+
+1. **Where the data ends.** `order-history status --json`: the Amazon entry's `as_of`
+   (the newest order in the export), `saved_orders` and `checked`. With read access to
+   the user's email, the dates of order confirmations after `as_of` show whether there
+   is anything to find, as in "Is a new export worth it?" above: dates only, never the
+   bodies.
+2. **Find the new orders.** Open `https://www.amazon.com/gp/css/order-history` in a tab
+   you can read. It lists orders newest first, 10 to a page. Each card shows the order
+   date, the total, `ORDER # <id>` and a "View order details" link. Take only the order
+   IDs from the list, never its items: the list can group an item under the wrong
+   order's card. For each ID, newest first, run
+   `order-history order <id> --store amazon --json`: exit 0 means the data folder
+   already has it (in the export or saved), exit 1 means it is new. At the first known
+   ID, check the rest of that page too (orders from one day can appear in any order),
+   then stop. If 3 pages (30 orders) pass with no known ID, stop and ask the user before
+   reading further. The list starts filtered to the past 3 months; if the export's
+   `as_of` is older than that, tell the user, since the list may end before a known ID,
+   and ask before changing the filter.
+3. **Read each new order.** Open
+   `https://www.amazon.com/gp/your-account/order-details?orderID=<id>`. Read it by its
+   `data-component` attributes, which are steadier than the layout (observed 2026-10-25):
+   - `orderDate`: "March 3, 2026" → `date` `2026-03-03`. `orderId`: check it is the
+     ID you opened.
+   - `chargeSummary`: the "Grand Total" row → `total`. Each row appears twice in the
+     page; take one. The other rows (subtotal, shipping, tax, rewards points) are not
+     stored.
+   - `shipments`: one or more, each with a `shipmentStatus` ("Arriving March 9",
+     "Delivered March 5") and its `purchasedItems`. Per item:
+     - `itemTitle` → `name`; its link's pathname holds `/dp/<ASIN>` → `asin`;
+     - `unitPrice` → `unit`. Its text is doubled ("$12.99$12.99"): take one amount;
+     - the quantity is the badge `.od-item-view-qty` inside `itemImage`, absent when
+       it is 1 → `qty`. The `quantity` component itself was empty.
+
+     `orderedMerchant` (the seller) is not stored.
+   - Status: if any shipment is not yet delivered, `status` is `In progress` (the word
+     exported in-flight orders show). When every shipment is delivered, leave `status`
+     out, as for a finished exported order. A cancelled order gets `Cancelled`, as the
+     export writes it.
+
+   Amounts go in as plain numbers, `"12.99"`, with no `$` (the tool refuses one).
+   `currency` is `USD` on amazon.com. Leave out item `total` (the tool fills unit ×
+   qty) and never add a `summary`: exported Amazon orders have none, so a saved order
+   with one would look different.
+4. **Write the document** to a file in a new temporary folder (from `mktemp -d`), never
+   in a repository or the data folder:
+
+   ```json
+   {"store": "amazon",
+    "orders": [{"id": "111-1234567-1234567", "date": "2026-03-03", "currency": "USD",
+                "total": "28.14", "status": "In progress",
+                "items": [{"name": "Example USB cable", "asin": "B000000000",
+                           "qty": "2", "unit": "12.99"}]}]}
+   ```
+
+   With nothing new, write `{"store": "amazon", "orders": []}` and run `add` on it
+   directly: it records that the list was checked, so `status` stops reporting `stale`.
+5. **Preview:** `order-history add <file> --dry-run --json`. Exit 2 names the field it
+   refused; fix the document and run it again. Tell the user, in a few lines, what it
+   would add: per order the date, total and item names, and anything in `replaced` or
+   `skipped_in_export` (an order the export already has is skipped; the export wins).
+6. **Save** when the user agrees: `order-history add <file> --json`. Report `added` and
+   `page`, then delete the temporary folder.
+7. **Check:** `order-history search <a distinctive word from a new item> --json` finds
+   the order. A saved order still `In progress` can be read again later (step 3) and
+   added again; the new copy replaces the old.
+
 ## What is in it
 
 The zip unpacks, under `<data>/amazon/current/`, to:

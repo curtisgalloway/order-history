@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Notebook index
 
-Updated: 2026-10-25T22:20-0700
+Updated: 2026-10-25T22:26-0700
 
 A row is stale when its chapter has an entry newer than "indexed through".
 
@@ -81,6 +81,13 @@ Outcome: complete; `add`, `order-pages.json` (`saved.py`), merged in `amazon.loa
 - Review F1: a damaged saved file rolled back every import; the import's rebuild now loads tolerantly.
 - Review F5: `load` reads the saved file before the export, so a read racing an import can't lose an order.
 - Recheck N1: the file check needs only id, date and item names; other fields are filled on read.
+
+### [M8 — The Amazon catch-up flow](M8.md)
+Entries: 2026-10-25T22:23-0700 through 2026-10-25T22:26-0700
+Outcome: open; docs written, waiting for the real catch-up with the user
+- Flow in `vendors/amazon.md`; freshness rule in SKILL.md reads `status`'s `stale`.
+- Amounts need no `$` (`add` refuses one); a cancelled order keeps `Cancelled`.
+- Dropped a second refresh trigger (a newer order not found); left to the user.
 
 ## Threads
 - **Privacy of tracked files:** [design](design.md), [M4](M4.md) — the draft quoted account
