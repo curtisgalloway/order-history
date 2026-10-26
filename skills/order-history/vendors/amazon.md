@@ -16,7 +16,11 @@ export, a zip of folders of CSV files. **ASIN** is Amazon's ten-character produc
 On amazon.com, the user opens the *Request My Data* page (signed in; Amazon's help pages
 link to it), asks for **Your Orders** (or everything), and confirms the request by email.
 A download link arrives by email. Amazon says it can take up to a month; in practice it
-has come within an hour of confirming. The download page needs the user's own login: let
+has come within an hour of confirming. **The export can miss the newest orders:**
+it is built from a snapshot taken some time before the zip's timestamp (an order placed two
+minutes before the zip was built was not in it; how far back the snapshot can be is not
+known). An export with no new orders after a very recent purchase is not a failed import;
+tell the user, and suggest a new request later if they need that order. The download page needs the user's own login: let
 them fetch the zip, then import it as it is (`order-history import <zip>`), with no need
 to unzip it.
 
