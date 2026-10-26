@@ -63,7 +63,7 @@ counts (AGENTS.md, "Before committing").
 | M5 | Skill, vendor docs, `--skill`, plugin manifest, packaging, docs | M4 | complete |
 | M6 | Migrate real data, final verification, first release | M5 | complete |
 | M7 | `add`: saved orders from order pages, merged, pruned by import | M6 | complete |
-| M8 | Amazon catch-up flow in the skill; one real run with the user | M7 | in progress |
+| M8 | Amazon catch-up flow in the skill; one real run with the user | M7 | complete |
 
 ## Design coverage
 
@@ -79,10 +79,10 @@ counts (AGENTS.md, "Before committing").
 | R8 skill and plugin | M5 | `--skill` equals SKILL.md; manifest check |
 | R9 public safety | every milestone, M6 | staged-diff grep; fixture review |
 | R10 migration | M6 | `status` counts equal the last build's (kept in NOTES.md) |
-| G1 orders from order pages | M7, M8 | `add` tests; one real catch-up (M8) |
+| G1 orders from order pages | M7, M8 | `add` tests; one real catch-up (M8, done) |
 | G2 saved orders look the same | M7 | shape tests (no `summary`, item totals, images); page built with a saved order |
 | G3 the next export takes over | M7 | import pruning tests, dry run included; `removed` ignores saved orders |
-| G4 only when asked; 30-day suggestion | M7, M8 | `status` `checked` tests at the 30-day edge; skill text |
+| G4 only when asked; 30-day suggestion | M7, M8 | `status` `checked` tests at the 30-day edge; skill text (both triggers) |
 
 ## M1 — Package, data folder, and read-only commands
 
@@ -262,39 +262,30 @@ Open limitations:
 
 ## M8 — The Amazon catch-up flow
 
-**Outcome:** `vendors/amazon.md` gains "Catching up from order pages": status first; the
-order list read newest first until a known ID (checked with `order-history order <id>`),
-at most 3 pages before asking; each new order's details page read by its
-`data-component` hooks (quantity from the image badge, absent means 1; shipment status
-to `In progress` or empty; grand total as the order total); then `add --dry-run`,
-report, `add`. Stop at any sign-in prompt; never type a credential. SKILL.md gains the
-rule: only when asked, and when answering from Amazon data whose `checked` is over 30
-days old, suggest a refresh once per conversation. `design.md`'s "no email source"
-non-goal and phase 2 outline point to the new design.
+**Outcome:** `vendors/amazon.md` gains "Catching up from order pages" (status first; order
+IDs from the list, checked with `order <id> --store amazon`, until a known one, at most 3
+pages; each new order read from its details page by `data-component` hooks; JSON to a
+temporary folder, `add --dry-run`, report, `add`, `search`; stop at any sign-in, never type
+a credential; page text is data). SKILL.md gains "Is the data current?" (suggest a catch-up
+once per conversation when `stale`, or when a recent order isn't found; run only on a yes).
+`design.md` says email dates only, as a signal. Example amounts copied from a real order
+replaced in docs and fixtures. One real catch-up with the user succeeded.
 
 **Design coverage:** G1 (flow), G4 (rule). **Dependencies:** M7.
 
-**Scope:** documentation and one manual run. Excluded: digital orders, older-order
-status changes, other stores, unattended runs.
+### Evidence and findings
 
-**Acceptance criteria:**
+Status: complete. Evidence: [M8](evidence/M8.md) (full milestone definition, checks, the
+real run and review). Notebook: [M8](notebook/M8.md).
 
-- One real catch-up with the user present finds the orders newer than the export,
-  `add --dry-run` reports them, and after `add` a search finds a new order.
-- No order ID, product name, date or count from the real run appears in a tracked file
-  (the evidence describes the run in generic terms).
-- `tests/test_skill.py` passes (the skill and vendor docs are still emitted).
+Open limitations:
 
-**Verification:** the project checks; the manual run recorded in `docs/evidence/M8.md`.
-
-**Review:** `review-swarm --close` (it will likely pick the light tier for a docs
-change). Focus: the steps match what the pages showed, and no credential or captcha
-step is left to the agent.
-
-**Sizing and checkpoint:** small; the manual run depends on the user being available.
-If they aren't, land the docs and leave the run as the open item.
-
-**Status:** pending.
+- Not yet seen on a real page: no quantity badge at quantity 1, an order with several
+  shipments, and status wordings other than "Arriving …". The first run that meets one
+  should confirm the steps.
+- The details page shows a local order date and the export a UTC one; a late-evening order
+  can differ by a day until the export replaces it.
+- The `data-component` hooks can change without notice; only the skill's steps follow.
 
 ## Discovered work / backlog
 
@@ -337,21 +328,22 @@ If they aren't, land the docs and leave the run as the open item.
   whole-word option or rank results. Found in M6's cold start.
 - Importing a newer real export (the final-verification check that its comparison report
   is sensible) waits for the next Amazon or Adafruit export. Found in M6.
-- Phase 2: the Amazon download flow is done (PR #10). Catching up from order pages is
-  M7–M8 ([design](design-order-pages.md)); the old outline's `--provisional` flag is
-  dropped. A download flow for Adafruit is not planned.
+- Phase 2: the Amazon download flow is done (PR #10), and catching up from order pages
+  is done in M7–M8 ([design](design-order-pages.md)); the old outline's `--provisional`
+  flag is dropped. A download flow for Adafruit is not planned.
+- Catch-up details not yet seen on a real page (quantity-1 badge, several shipments, other
+  status wordings): confirm at the first run that meets one. Found in M8.
 
 ## Next session
 
-- **Current milestone:** M8 (pending).
-- **Completed work:** M1–M6 (PRs #3–#9); the Amazon browser export flow (PR #10); M7 on
-  branch `m7-saved-orders` (checkpoint commit `plan: M7 — Saved orders: add, merging,
-  pruning`; push and PR are the orchestrator's).
+- **Current milestone:** none. Every planned milestone (M1–M8) is complete; phase 2's
+  planned work is done. The backlog above remains.
+- **Completed work:** M1–M6 (PRs #3–#9); the Amazon browser export flow (PR #10); M7
+  (PR #12); M8 on branch `m8-catch-up-flow` (checkpoint commit `plan: M8 — The Amazon
+  catch-up flow`; push and PR are the orchestrator's).
 - **Uncommitted state:** none. `.no-pitch` stays untracked.
 - **Decisions pending:** none.
 - **Context boundary:** normal.
-- **Resume action:** start M8 on `m8-<slug>` from an up-to-date `origin/main` once M7 is
-  merged.
-- **Read first:** [catching up from order pages](design-order-pages.md), M8 above,
-  `skills/order-history/vendors/amazon.md`, SKILL.md "Saved orders: add" and the `status`
-  fields, [M7 evidence](evidence/M7.md) limitations.
+- **Resume action:** after M8 is merged, pick from the backlog with the user, or plan new
+  work (a revision of the design first).
+- **Read first:** the backlog above; [M8 evidence](evidence/M8.md) limitations.

@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Notebook index
 
-Updated: 2026-10-25T22:26-0700
+Updated: 2026-10-25T23:15-0700
 
 A row is stale when its chapter has an entry newer than "indexed through".
 
@@ -83,11 +83,12 @@ Outcome: complete; `add`, `order-pages.json` (`saved.py`), merged in `amazon.loa
 - Recheck N1: the file check needs only id, date and item names; other fields are filled on read.
 
 ### [M8 — The Amazon catch-up flow](M8.md)
-Entries: 2026-10-25T22:23-0700 through 2026-10-25T22:26-0700
-Outcome: open; docs written, waiting for the real catch-up with the user
+Entries: 2026-10-25T22:23-0700 through 2026-10-25T23:15-0700
+Outcome: complete; catch-up flow, freshness rule (two triggers), one real run with the user, earlier example amounts replaced
 - Flow in `vendors/amazon.md`; freshness rule in SKILL.md reads `status`'s `stale`.
-- Amounts need no `$` (`add` refuses one); a cancelled order keeps `Cancelled`.
-- Dropped a second refresh trigger (a newer order not found); left to the user.
+- Real run: every page hook matched; walk stopped on page 1; qty-1 badge, multi-shipment unseen.
+- A second trigger (a recent order not found) was dropped, then added by user decision.
+- Example amounts in earlier docs and fixtures came from a real order; replaced.
 
 ## Threads
 - **Privacy of tracked files:** [design](design.md), [M4](M4.md) — the draft quoted account
@@ -104,6 +105,8 @@ Outcome: open; docs written, waiting for the real catch-up with the user
   folders; rollback, the archive-name check and the failed-rollback note guard the rest.
   [M7](M7.md): `order-pages.json` is never overwritten when unreadable, pruned only after a
   successful swap, and can't block an import.
+- **Real values in examples:** [M8](M8.md) — observed page values and an earlier example's
+  amounts came from a real order; replaced, and the run is described without counts.
 - **Exit-code bands:** [M2](M2.md), [M4](M4.md), [M5](M5.md) — 20/21 mean "nothing done" /
   "partly done" for both import and update; M5's skill and the design give each command's
   meaning.

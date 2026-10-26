@@ -45,7 +45,10 @@ Goals:
   saved copy, which is then dropped. Saved orders the export still lacks are kept.
 - **G4** Catch-up runs only when you ask. When answering a question from data whose
   last refresh is more than 30 days old, the agent may suggest a refresh, once per
-  conversation (user decision 2026-10-25).
+  conversation (user decision 2026-10-25). It may also suggest one, within the same
+  once per conversation, when the user asks about a recent order that the search can't
+  find although the data is not that old (user decision 2026-10-25, "Yes, suggest it";
+  added in M8).
 
 Non-goals:
 
@@ -103,7 +106,7 @@ Anti-goals (a failure even if it works):
      quantity (the badge on the item image; absent means 1);
    - `chargeSummary`: the grand total (the other rows are not stored; see
      "Same shape as an exported order");
-   - `shipmentStatus` (for example "Arriving November 1", "Delivered").
+   - `shipmentStatus` (for example "Arriving March 9", "Delivered").
 4. Write the orders as one JSON document to a temporary file and run
    `order-history add <file> --dry-run --json`, report, then run it for real.
 
@@ -117,10 +120,10 @@ Input (`FILE`, or `-` for stdin):
 
 ```json
 {"store": "amazon",
- "orders": [{"id": "111-1234567-1234567", "date": "2026-10-25", "currency": "USD",
-             "total": "35.67", "status": "In progress",
-             "items": [{"name": "Example USB switch", "asin": "B000000000",
-                        "qty": "5", "unit": "6.99"}]}]}
+ "orders": [{"id": "111-1234567-1234567", "date": "2026-03-03", "currency": "USD",
+             "total": "28.14", "status": "In progress",
+             "items": [{"name": "Example USB cable", "asin": "B000000000",
+                        "qty": "2", "unit": "12.99"}]}]}
 ```
 
 - Fields are the existing order and item shape (`model.new_order`/`new_item`). The tool

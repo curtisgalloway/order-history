@@ -31,14 +31,14 @@ def order(order_id=NEW, date="2026-10-20", **kw):
         "id": order_id,
         "date": date,
         "currency": "USD",
-        "total": "35.67",
+        "total": "28.14",
         "status": "In progress",
         "items": [
             {
-                "name": "Example USB switch",
+                "name": "Example USB cable",
                 "asin": "B000000000",
-                "qty": "5",
-                "unit": "6.99",
+                "qty": "2",
+                "unit": "12.99",
             }
         ],
     }
@@ -121,7 +121,7 @@ class AddTest(AddCase):
                 "date": "2026-10-20",
                 "status": "In progress",
                 "currency": "USD",
-                "total": "35.67",
+                "total": "28.14",
                 "digital": False,
                 "site": "Amazon.com",
                 "url": amazon.ORDER_URL.format(order_id=NEW),
@@ -130,11 +130,11 @@ class AddTest(AddCase):
                 "source": "order-page",
                 "items": [
                     {
-                        "name": "Example USB switch",
+                        "name": "Example USB cable",
                         "asin": "B000000000",
-                        "qty": "5",
-                        "unit": "6.99",
-                        "total": "34.95",
+                        "qty": "2",
+                        "unit": "12.99",
+                        "total": "25.98",
                         "url": "https://www.amazon.com/dp/B000000000",
                         "department": "",
                     }
@@ -142,7 +142,7 @@ class AddTest(AddCase):
             },
         )
         self.assertEqual(os.stat(saved.path(self.amazon)).st_mode & 0o777, 0o600)
-        code, found, _ = self.cli_json("search", "usb", "switch")
+        code, found, _ = self.cli_json("search", "usb", "cable")
         self.assertEqual(code, 0)
         self.assertEqual([o["id"] for o in found["orders"]], [NEW])
         code, one, _ = self.cli_json("order", NEW)
