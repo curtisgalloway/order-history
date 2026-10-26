@@ -5,7 +5,8 @@ SPDX-License-Identifier: Apache-2.0
 
 # Agent-first order history — Implementation Plan
 
-Design: [design](design.md), revision 2026-10-25 approved (commit `9633750`)
+Design: [design](design.md), revision 2026-10-25 approved (commit `9633750`); M7–M8:
+[catching up from order pages](design-order-pages.md), revision 2026-10-25 approved
 Notebook: [index](notebook/index.md); process log: [process log](process-log.md)
 
 Project checks:
@@ -31,7 +32,8 @@ checks: `build` and `lint` until M3; from M3's merge, `lint`, `page`,
   locally first.
 - Checkpoint commit prefix: `plan: M<N> — <title>`.
 
-**Design gate:** approved 2026-10-25 (commit `9633750`).
+**Design gate:** approved 2026-10-25 (commit `9633750`). Catching up from order pages
+(M7–M8): approved by the user 2026-10-25 ("approved").
 
 **User overrides:** none.
 
@@ -60,6 +62,8 @@ counts (AGENTS.md, "Before committing").
 | M4 | `update`: Adafruit items, opt-in Amazon images | M3 | complete |
 | M5 | Skill, vendor docs, `--skill`, plugin manifest, packaging, docs | M4 | complete |
 | M6 | Migrate real data, final verification, first release | M5 | complete |
+| M7 | `add`: saved orders from order pages, merged, pruned by import | M6 | pending |
+| M8 | Amazon catch-up flow in the skill; one real run with the user | M7 | pending |
 
 ## Design coverage
 
@@ -75,6 +79,10 @@ counts (AGENTS.md, "Before committing").
 | R8 skill and plugin | M5 | `--skill` equals SKILL.md; manifest check |
 | R9 public safety | every milestone, M6 | staged-diff grep; fixture review |
 | R10 migration | M6 | `status` counts equal the last build's (kept in NOTES.md) |
+| G1 orders from order pages | M7, M8 | `add` tests; one real catch-up (M8) |
+| G2 saved orders look the same | M7 | shape tests (no `summary`, item totals, images); page built with a saved order |
+| G3 the next export takes over | M7 | import pruning tests, dry run included; `removed` ignores saved orders |
+| G4 only when asked; 30-day suggestion | M7, M8 | `status` `checked` tests at the 30-day edge; skill text |
 
 ## M1 — Package, data folder, and read-only commands
 
@@ -228,6 +236,106 @@ Open limitations:
   export (backlog).
 - The browser tool can't open `file://`; the page's from-disk check was the user's.
 
+## M7 — Saved orders: `add`, merging, pruning
+
+**Outcome:** `order-history add FILE|- [--dry-run] [--json]` saves orders read from
+Amazon's order pages to `<data>/amazon/order-pages.json` (atomically, under the import
+lock) and rebuilds the page. `amazon.load()` appends saved orders the export lacks and
+merges images over both; `update --amazon-images` and `gaps()` include their ASINs. A
+successful import drops saved orders whose IDs are now in the export and reports
+`saved_orders` (`replaced_by_export`, `kept`); a dry run reports without dropping.
+`status` gains `saved_orders` and `checked`. Before: an order placed after the export
+can't be found. After: `add` with that order, then `search` finds it, shaped like an
+exported one.
+
+**Design coverage:** G1 (storage), G2, G3, G4 (`checked`). **Dependencies:** M6.
+
+**Scope:** the CLI, the Amazon vendor module, the vendor-contract docstring, tests, and
+the SKILL.md entries for `add` and the new report fields. Excluded: the browser flow
+(M8), any other store, any request to Amazon.
+
+**Implementation steps (locations proposed):**
+
+1. Vendor contract: an optional saved-orders capability (for example a `SAVED_ORDERS`
+   flag), documented in `vendors/__init__.py`; Amazon declares it.
+2. Validation and normalization of the input document: required `id`, `date`
+   (YYYY-MM-DD), item `name`; `summary` refused; unknown store, invalid JSON or a store
+   without the capability exits 2 and saves nothing. Fill `source: "order-page"`, item
+   `url` from the ASIN, item `total` as unit × qty; amounts through `model.money`.
+3. `add`: skip IDs already in the export (listed in the report), replace saved IDs,
+   accept an empty list, record `checked`, write atomically under the import lock,
+   rebuild. Exit 3 with no data folder or no Amazon export, 4 if the page can't be built
+   (saved file kept), 20 while an import runs.
+4. `amazon.load()` merge and image coverage (`load`, `gaps`, `enrich`'s ASIN list).
+5. Import: prune after a successful swap, report `saved_orders`; `store.compare` keeps
+   using `read()` of the export only.
+6. `status`: `saved_orders` and `checked` (the later of the last `add` and the current
+   export's import time; how the import time is recorded is the builder's call).
+7. SKILL.md: `add` in the command list, the exit-code table and the report fields.
+
+**Acceptance criteria:**
+
+- A saved order appears in `search`, `order` and the page's data with the same fields
+  an exported Amazon order has (no `summary`), and with its image when `images.json`
+  has one.
+- Adding an ID already exported changes nothing for that ID and lists it as skipped;
+  adding a saved ID again replaces it; an empty list only updates `checked`.
+- Each invalid input exits 2 with `order-pages.json` unchanged.
+- An import whose export contains a saved ID drops it and reports it; saved orders it
+  lacks stay; its `orders.removed` never lists a saved order; `--dry-run` drops nothing.
+- `status` reports `checked`, and a test pins the 30-day boundary the skill uses.
+- No test reaches the network (`support.IsolatedTestCase`).
+
+**Verification:** the project checks above (tests on 3.10 and latest, pylint, pyink,
+page build and `test_page.py` against the built shell). New tests in
+`tests/test_add.py` (proposed) plus additions to the import, status and vendor tests.
+
+**Review:** `review-swarm --close`. Focus: data loss in `order-pages.json` (atomic
+write, lock, prune only after a successful swap), the export always winning by ID, and
+saved orders never counted as removed.
+
+**Sizing and checkpoint:** one new command and one new file format over existing
+patterns (import's lock and atomic write, update's image merge); about one session.
+Split point if it grows: steps 1–4 (add and load), then 5–7 (import, status, skill).
+
+**Status:** pending.
+
+## M8 — The Amazon catch-up flow
+
+**Outcome:** `vendors/amazon.md` gains "Catching up from order pages": status first; the
+order list read newest first until a known ID (checked with `order-history order <id>`),
+at most 3 pages before asking; each new order's details page read by its
+`data-component` hooks (quantity from the image badge, absent means 1; shipment status
+to `In progress` or empty; grand total as the order total); then `add --dry-run`,
+report, `add`. Stop at any sign-in prompt; never type a credential. SKILL.md gains the
+rule: only when asked, and when answering from Amazon data whose `checked` is over 30
+days old, suggest a refresh once per conversation. `design.md`'s "no email source"
+non-goal and phase 2 outline point to the new design.
+
+**Design coverage:** G1 (flow), G4 (rule). **Dependencies:** M7.
+
+**Scope:** documentation and one manual run. Excluded: digital orders, older-order
+status changes, other stores, unattended runs.
+
+**Acceptance criteria:**
+
+- One real catch-up with the user present finds the orders newer than the export,
+  `add --dry-run` reports them, and after `add` a search finds a new order.
+- No order ID, product name, date or count from the real run appears in a tracked file
+  (the evidence describes the run in generic terms).
+- `tests/test_skill.py` passes (the skill and vendor docs are still emitted).
+
+**Verification:** the project checks; the manual run recorded in `docs/evidence/M8.md`.
+
+**Review:** `review-swarm --close` (it will likely pick the light tier for a docs
+change). Focus: the steps match what the pages showed, and no credential or captcha
+step is left to the agent.
+
+**Sizing and checkpoint:** small; the manual run depends on the user being available.
+If they aren't, land the docs and leave the run as the open item.
+
+**Status:** pending.
+
 ## Discovered work / backlog
 
 - Done in M3: `search_cases.json` runs against `web/src/search.ts` in the `page` job.
@@ -269,21 +377,18 @@ Open limitations:
   whole-word option or rank results. Found in M6's cold start.
 - Importing a newer real export (the final-verification check that its comparison report
   is sensible) waits for the next Amazon or Adafruit export. Found in M6.
-- Phase 2: a download flow for each vendor, and `add --provisional` from order
-  pages. Not planned yet.
+- Phase 2: the Amazon download flow is done (PR #10). Catching up from order pages is
+  M7–M8 ([design](design-order-pages.md)); the old outline's `--provisional` flag is
+  dropped. A download flow for Adafruit is not planned.
 
 ## Next session
 
-- **Current milestone:** none. M1–M6 are complete; the plan's phase 1 is delivered.
-- **Completed work:** M1–M6 merged (PRs #3–#8). `v0.1.0` is tagged on `3b5895e` and released
-  with `page-shell.html`. The M6 close-out records are on branch `m6-close` (checkpoint
-  commit `plan: M6 — close: release v0.1.0 verified, checkout cleaned`), for a pull request.
-- **Uncommitted state:** none. `.no-pitch` stays untracked. The user's data lives in the
-  data folder, outside the repository.
-- **Decisions pending:** none required. Optional: whether to pursue any backlog item above,
-  or start designing phase 2.
-- **Context boundary:** normal completion.
-- **Resume action:** no milestone is pending. Next work is chosen from the backlog (for
-  example, import the next real export and check its comparison report) or a phase 2 design
-  revision, which goes through the design gate first.
-- **Read first:** [design](design.md), the backlog above, [notebook index](notebook/index.md).
+- **Current milestone:** M7 (pending), then M8.
+- **Completed work:** M1–M6 (PRs #3–#9); the Amazon browser export flow (PR #10). The
+  design for catching up from order pages was approved 2026-10-25.
+- **Uncommitted state:** none. `.no-pitch` stays untracked.
+- **Decisions pending:** none.
+- **Context boundary:** normal; planning only.
+- **Resume action:** start M7 on `m7-saved-orders` from an up-to-date `origin/main`.
+- **Read first:** [catching up from order pages](design-order-pages.md), M7 above,
+  `vendors/__init__.py`, `vendors/amazon.py`, `store.py`'s import flow.
