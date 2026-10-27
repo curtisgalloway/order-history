@@ -1,7 +1,7 @@
 {
   "name": "order-history",
   "displayName": "Order history",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Import, search and maintain your own order history from the exports stores let you download (Amazon, Adafruit), in a local data folder with a search page that opens from disk.",
   "author": {
     "name": "Curtis Galloway",
