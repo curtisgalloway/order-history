@@ -61,6 +61,34 @@ class StatusTest(support.IsolatedTestCase):
         self.assertEqual(json.loads(out)["vendors"][0]["orders"], 6)
 
 
+@unittest.skipIf(os.geteuid() == 0, "root reads a folder whatever its mode")
+class UnreadableDataFolderTest(support.IsolatedTestCase):
+    """A folder that exists but can't be listed exits 3, never "nothing found".
+
+    Mode 000 stands in for macOS privacy blocking (~/Documents for an app that
+    wasn't granted it): both let the folder be stat'ed but not listed.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.data = self.data_dir()
+        os.chmod(self.data, 0)
+        self.addCleanup(os.chmod, self.data, 0o700)
+
+    def test_each_command_exits_3_with_a_reason(self):
+        for argv in (
+            ("status",),
+            ("search", "solder"),
+            ("order", "111-0000001-0000001"),
+        ):
+            with self.subTest(argv=argv):
+                code, out, err = self.run_cli(*argv, "--data-dir", self.data)
+                self.assertEqual(code, 3, err)
+                self.assertEqual(out, "")
+                self.assertIn("can't read the data folder", err)
+                self.assertNotIn("Traceback", err)
+
+
 class SearchTest(support.IsolatedTestCase):
     """`search` exit codes, JSON and text output."""
 
