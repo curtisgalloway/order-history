@@ -64,6 +64,13 @@ where to keep their order data (the default is `~/Documents/Order History`), the
 order-history init                       # or: order-history init --data-dir PATH
 ```
 
+Exit 3 with "can't read the data folder" means the folder exists but this process may not
+list it. Never run `init` for this, and never report it as "nothing found". On macOS it is
+almost always privacy protection on `~/Documents`: the app that started this session (a
+terminal, an editor, an agent daemon) has not been granted that folder. Tell the user which
+folder it is and that they grant access in System Settings > Privacy & Security, then
+restart that app.
+
 `init` creates the folder (mode 0700) and records it in
 `~/.config/order-history/config.json`. The folder is chosen by, in order: `--data-dir`,
 `$ORDER_HISTORY_DIR`, that config file, the default. Then ask the user to download an
@@ -239,7 +246,7 @@ for every command, but what was partly done differs.
 | 0 | found | imported, or dry run | done, or nothing to do | saved, or dry run | done |
 | 1 | nothing matched | — | — | — | — |
 | 2 | bad usage; an unknown `--store`; an order ID found in several orders | bad usage; file not recognized, or claimed by two stores | bad usage | bad usage; an invalid input document (nothing saved); an unreadable `order-pages.json` | bad usage; unreadable config |
-| 3 | no data folder | no data folder | no data folder; or Adafruit orders need items and there is no lookup email | no data folder, or no export of that store yet | no data folder (not `init`) |
+| 3 | no data folder, or it can't be read | no data folder, or it can't be read | no data folder, or it can't be read; or Adafruit orders need items and there is no lookup email | no data folder or it can't be read, or no export of that store yet | no data folder, or it can't be read (not `init`) |
 | 4 | — | the page couldn't be built; the import was undone | the page couldn't be rebuilt; the caches are saved, run `build` | the page couldn't be rebuilt; the orders are saved, run `build` | `build`: no page shell, or the page couldn't be written; the old page is kept |
 | 20 | — | nothing changed: another import is running, or a failure was rolled back; retry | nothing saved: throttled, robots.txt said no or couldn't be read, every lookup failed, or another update or an import is running; retry later | nothing saved: an import is running, or the file couldn't be written; retry | `build`: an import is running; retry |
 | 21 | — | an import failed **and couldn't undo itself**: stop, show the user the folders named, change nothing | some lookups saved, then the run stopped; or the rebuild met a running import. Run `update` (or `build`) again later | — | — |

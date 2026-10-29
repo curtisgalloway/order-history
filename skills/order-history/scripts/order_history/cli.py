@@ -146,7 +146,12 @@ class _SkillAction(argparse.Action):
 
 
 def _data_dir(args):
-    """The data folder, which must exist; exits 3 naming init otherwise."""
+    """The data folder, which must exist and be readable; exits 3 otherwise.
+
+    A folder that can be stat'ed but not listed (macOS privacy blocking
+    ~/Documents, or its mode) would otherwise read as one with no exports, so
+    every search would report "nothing found".
+    """
     try:
         path, source = config.resolve(args.data_dir)
     except config.ConfigError as e:
@@ -157,6 +162,15 @@ def _data_dir(args):
             "run `order-history init` to create one",
             EXIT_NO_DATA,
         )
+    try:
+        os.listdir(path)
+    except OSError as e:
+        raise CliError(
+            f"can't read the data folder {path} (from {source}): {e.strerror}; "
+            "on macOS, give the app running this command access to that folder "
+            "in System Settings > Privacy & Security, then restart the app",
+            EXIT_NO_DATA,
+        ) from e
     return path
 
 
